@@ -176,6 +176,8 @@ namespace PuppetMaster.Prototype
             float rightGoal = debugOverrideInput ? debugRight : RightInput;
             LeftTension = Mathf.Lerp(LeftTension, leftGoal, kf);
             RightTension = Mathf.Lerp(RightTension, rightGoal, kf);
+            if (!IsFinite(LeftTension)) LeftTension = 0f;
+            if (!IsFinite(RightTension)) RightTension = 0f;
 
             float l = Shape(LeftTension);
             float r = Shape(RightTension);
@@ -206,7 +208,13 @@ namespace PuppetMaster.Prototype
             RopePull(_rig.right, r);
         }
 
-        float Shape(float t) => Mathf.Pow(Mathf.Clamp01(t), tensionGamma);
+        float Shape(float t)
+        {
+            t = Mathf.Clamp01(IsFinite(t) ? t : 0f);
+            return Mathf.Pow(t, tensionGamma);
+        }
+
+        static bool IsFinite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
 
         void DriveLeg(in PuppetRig.Leg leg, float squat, float leanDeg, float combined)
         {
@@ -245,8 +253,8 @@ namespace PuppetMaster.Prototype
             Vector3 from = leg.ropeAttach != null ? leg.ropeAttach.position : leg.foot.worldCenterOfMass;
             Vector3 dir = anchor.position - from;
             float d = dir.magnitude;
-            if (d < 1e-4f) return;
-            leg.foot.AddForceAtPosition(dir / d * (ropePull * t), from, ForceMode.Force);
+            if (!(d > 1e-4f) || !IsFinite(t)) return; // also rejects NaN d
+            leg.foot.AddForceAtPosition(dir / d * (ropePull * Mathf.Clamp01(t)), from, ForceMode.Force);
         }
 
         static void SetDrive(ConfigurableJoint j, float spring, float damper, float maxForce)
@@ -267,16 +275,26 @@ namespace PuppetMaster.Prototype
         static void SetTargetLocal(ConfigurableJoint joint, Quaternion targetLocalRotation)
         {
             if (joint == null) return;
-            Vector3 right = joint.axis;
+            if (!IsFinite(targetLocalRotation.x) || !IsFinite(targetLocalRotation.y)
+                || !IsFinite(targetLocalRotation.z) || !IsFinite(targetLocalRotation.w)) return;
+
+            Vector3 right = joint.axis.normalized;
             Vector3 forward = Vector3.Cross(joint.axis, joint.secondaryAxis).normalized;
             if (forward.sqrMagnitude < 1e-6f) forward = Vector3.forward;
             Vector3 up = Vector3.Cross(forward, right).normalized;
+            if (up.sqrMagnitude < 1e-6f) up = Vector3.up;
 
             Quaternion worldToJoint = Quaternion.LookRotation(forward, up);
-            Quaternion result = Quaternion.Inverse(worldToJoint);
-            result *= Quaternion.Inverse(targetLocalRotation); // startLocalRotation == identity
-            result *= worldToJoint;
-            joint.targetRotation = result;
+            Quaternion result = Quaternion.Inverse(worldToJoint)
+                                * Quaternion.Inverse(targetLocalRotation) // startLocalRotation == identity
+                                * worldToJoint;
+
+            // The ConfigurableJoint setter is strict about normalisation — guard
+            // against float drift so it never logs "Invalid quaternion".
+            float n = Mathf.Sqrt(result.x * result.x + result.y * result.y
+                                 + result.z * result.z + result.w * result.w);
+            if (!(n > 1e-4f) || !IsFinite(n)) return;
+            joint.targetRotation = new Quaternion(result.x / n, result.y / n, result.z / n, result.w / n);
         }
     }
 }
