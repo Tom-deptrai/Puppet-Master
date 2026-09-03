@@ -8,6 +8,138 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Phase 1: Prototype cơ chế con rối + hai dây
+
+**Mục tiêu:** prototype vật lý đầu tiên kiểm chứng cơ chế cốt lõi — một con rối
+khớp nối, hai chân trên ray, hai dây điều khiển nối vào hai chân, hai vùng input
+trái/phải, kéo dây căng → dựng cao, chùng → hạ thấp, điều khiển độc lập hai bên.
+**Chưa** combat, chưa vũ khí, chưa puppet thứ hai.
+
+### Đã tạo
+
+| File | Vai trò |
+|---|---|
+| `Assets/_Project/Scenes/PuppetPrototype.unity` | Scene prototype (thêm vào Build Settings, **không** đụng Bootstrap) |
+| `Scripts/Runtime/Prototype/PuppetRig.cs` | Holder tham chiếu tới mọi Rigidbody/Joint của con rối |
+| `Scripts/Runtime/Prototype/PuppetRopeController.cs` | Biến tension 0→1 mỗi bên thành lực vật lý (toàn bộ tuning ở đây) |
+| `Scripts/Runtime/Prototype/PuppetRopeInput.cs` | Đọc Input System → hai giá trị tension chuẩn hoá |
+| `Scripts/Runtime/Prototype/RopeVisual.cs` | LineRenderer vẽ dây, căng = thẳng/sáng, chùng = võng/mờ |
+| `Scripts/Runtime/Prototype/PuppetDebugHUD.cs` | IMGUI: Left/Right Tension, pelvis height, torso upright, vùng input |
+| `Scripts/Editor/PuppetPrototypeBuilder.cs` | Dựng lại toàn bộ scene từ code (`Puppet Master ▸ Phase 1 ▸ Build Puppet Prototype Scene`) — re-runnable |
+
+Scene được **sinh hoàn toàn bằng code** trong builder — chỉnh rig = sửa builder rồi
+chạy lại menu, không dựng tay. Materials prototype trong `Assets/_Project/Materials/Prototype/`.
+
+### Physics architecture
+
+- **13 Rigidbody**: Pelvis, Torso, Head, Upper/LowerArm ×2, Upper/LowerLeg ×2, Foot ×2.
+  Primitive (cube/capsule/sphere) làm mesh; collider set thủ công (transform part
+  giữ scale = 1 để anchor joint sạch, mesh con mới scale).
+  Mass: pelvis 10, torso 13, head 2.6, upperArm 1.6, lowerArm 1.0, upperLeg 6.5,
+  lowerLeg 4.5, **foot 4.0** (chân nặng cho gốc đứng ổn định).
+  `solverIterations 40 / velocity 20` mỗi body; `Physics.defaultSolverIterations`
+  nâng lên 24 lúc runtime (không đụng Physics project settings).
+  Va chạm giữa các bộ phận của rối bị tắt hết ở `PuppetRopeController.Awake()`.
+
+- **Joint type: `ConfigurableJoint` toàn bộ.** Rig là **phẳng (2.5D)** — trục quay
+  tự do duy nhất là `angularX` = quay quanh world Z (mặt phẳng màn hình). `angularY`
+  (yaw) và `angularZ` (chúi vào/ra màn hình) **khoá cứng** ở mọi khớp → không lật
+  ngang, không xoắn. Vị trí (x/y/z) khoá cứng ở mọi khớp nối bộ phận.
+  Giới hạn `angularX`: spine −40/50°, neck −40/45°, vai ±120°, khuỷu −10/135°,
+  hông ±85°, gối ±100°, cổ chân ±45°.
+
+- **Cơ chế "dựng"** đến từ **slerp drive** của các khớp, spring lerp theo tension:
+  - `hip`, `knee`, `ankle` — mỗi bên theo tension bên đó. Slack: spring thấp +
+    target "gập" (hông 5°, gối 52°, cổ chân 12° — **mirror** trái/phải để rối
+    sụp thẳng xuống). Taut: spring cao (hip/knee ~2600) + target = identity (thẳng).
+  - `spine`, `neck` — theo tension trung bình.
+  - **`pelvisPlaneJoint` (pelvis → world)** là lực "đứng" chính: slerp drive
+    spring ramp 340 → 4200 theo tension trung bình, target = thẳng đứng + lean.
+    Đây là "controlled stabilization" mà PROJECT_MASTER §5 cho phép — khi thả dây
+    (slack) spring gần như tắt và rối tự sụp.
+  - Một `AddTorque` nhỏ (assist 25, cap 60) giữ torso không trễ so với pelvis.
+
+### Ray ở chân
+
+- `pelvisPlaneJoint`: pelvis khoá **z** (độ sâu) → cả rối nằm trong mặt phẳng màn
+  hình. x/y tự do (rối nhấc lên/hạ xuống, dịch ngang được).
+- Mỗi chân: `ConfigurableJoint` foot → **world** (`connectedBody = null`):
+  - `xMotion Limited ±0.10 m` (spring 1200) — trượt tới/lui trong phạm vi nhỏ trên ray.
+  - `yMotion / zMotion Locked` — chân **không rời ray**.
+  - Toàn bộ angular **Locked** — bàn chân bắt vít phẳng vào ray; khớp cổ chân phía
+    trên mới cho cẳng chân xoay trong mặt phẳng màn hình.
+  - `xDrive` spring 1600 kéo chân về X gốc (±0.12 m) → hai chân giữ khoảng cách,
+    không dạt ra/chéo nhau.
+
+### Dây điều khiển & logic căng/chùng
+
+- Hai `Pulley` (điểm neo trên cao, `(±0.42, 2.55, 0)`). Mỗi dây = `LineRenderer`
+  từ pulley xuống `RopeAttach` (đỉnh sau bàn chân tương ứng). **Không** nối vào
+  vai/lưng/đầu.
+- `RopeVisual`: căng → 2 điểm gần thẳng, dày, vàng sáng; chùng → 16 điểm võng
+  parabol, mảnh, xám. Sag ∝ (1 − tension).
+- **Lực gameplay của dây tác động ĐÚNG vào bàn chân**: `PuppetRopeController.RopePull`
+  gọi `foot.AddForceAtPosition(hướng-về-pulley · ropePull · tension, ropeAttach)`.
+  `ropePull = 45`. Phần lớn lực đứng bị ray hấp thụ; giá trị **tension** mới là
+  thứ điều khiển spring các khớp ở trên.
+- **Hai căng** → pelvis drive cứng + chân thẳng → đứng cao (pelvis ~1.05 m ≈ 99% chuẩn, torso upright ≈ 1.00).
+- **Hai chùng** → drive nhão → rối gập gối, hạ trọng tâm (pelvis ~0.73 m ≈ 69%, torso ≈ 0.69) — **coherent crouch, không phải đống ragdoll**.
+- **Một căng một chùng** → chân bên căng thẳng, bên chùng gập; pelvis nghiêng,
+  torso lean về phía dây căng (~20–28°). Ổn định.
+- Chuyển trạng thái mượt (tension smoothing 14/s) — không rung vô hạn, không joint
+  explosion, không chân thoát ray (đã test snap qua lại nhiều lần, maxAngVel < 1 rad/s).
+
+### Input
+
+- `com.unity.inputsystem` sẵn có. Hai vùng: nửa trái / nửa phải màn hình.
+- **Mobile:** `EnhancedTouch` — mỗi ngón điều khiển vùng nó chạm xuống đầu tiên;
+  **kéo XUỐNG** từ điểm chạm = kéo dây căng (`dragFullPixels = 230`). Hai ngón độc lập.
+- **Desktop test:** chuột trái kéo trong một vùng (một vùng/lần); bàn phím
+  `A` = dây trái, `L` = dây phải, `Space` = cả hai (cho phép test cả hai tay).
+- Mỗi bên có giá trị 0.00 (chùng) … 1.00 (căng), rise 3.6/s, fall 2.3/s
+  (`pull / hold / release`). Không phải joystick combat.
+- Đã test qua MCP: bơm sự kiện bàn phím A/L/Space → HUD/tension/tư thế phản ứng
+  đúng; thả phím → về crouch. **Multitouch: code chuẩn EnhancedTouch, cần xác nhận
+  trên thiết bị thật.**
+
+### Giá trị tuning chính hiện tại (BASELINE — chưa chốt)
+
+| Nhóm | Slack | Stand |
+|---|---|---|
+| pelvis→world spring / damper | 340 / 42 | 4200 / 260 |
+| hip+knee spring / damper | 150 / 18 | 2600 / 150 |
+| ankle spring | 60 | 700 |
+| spine+neck spring / damper | 230 / 20 | 2600 / 150 |
+| fold target | hip 5° · knee 52° · ankle 12° · spine 8° · neck 10° | identity |
+
+`tensionGamma 1.3` · `tensionSmoothing 14` · `leanFromImbalance 12°` ·
+`ropePull 45` · `torsoUprightAssist 25 (cap 60)`.
+Bật `PuppetRopeController.debugOverrideInput` để ép tension test không cần input.
+
+### Thay đổi project settings
+
+- `EditorBuildSettings`: thêm `PuppetPrototype.unity` (Bootstrap giữ nguyên).
+- `PlayerSettings.runInBackground = 0 → 1` — để Play Mode chạy khi Editor không
+  focus (cần cho vòng lặp test qua MCP). Diff `ProjectSettings.asset` lớn là do
+  Unity 6.5 tự migrate `serializedVersion 24 → 29` khi đụng PlayerSettings — vô
+  hại. **Cân nhắc lại `runInBackground` trước khi release mobile** (game đối kháng
+  thường muốn pause khi vào nền).
+- `ProjectSettings/SceneTemplateSettings.json` — Unity tự tạo khi `NewScene`.
+
+### Còn thử nghiệm / cần người chơi đánh giá
+
+- Toàn bộ số tuning ở trên là baseline để **chơi thử rồi chỉnh**, chưa đưa vào PROJECT_MASTER.
+- Rig phẳng 2.5D: gập gối là "buckle" trong mặt phẳng màn hình (kiểu marionette),
+  **không** phải squat 3D thật. Cần xác nhận cảm giác này ổn cho hướng combat sau.
+- `pelvisPlaneJoint` gánh phần lớn việc giữ thăng bằng — có "assist" hơi nhiều;
+  người chơi cần đánh giá xem có còn cảm giác "vật lý" đủ hay quá cứng.
+- Lean khi lệch tension (~20–28°) — đủ hay quá nhiều?
+- Slack: đầu/cổ rủ khá sâu; feet vẫn dạt nhẹ ±0.03–0.04 m.
+- Bàn phím/chuột đã test; **multitouch chưa test trên thiết bị**.
+- HUD panel che nhẹ tay trái con rối khi đứng.
+
+---
+
 ## 2026-09-04 — Sửa Unity MCP (hoàn tất, không phải Phase 1)
 
 **Vấn đề:** Claude Desktop báo MCP `unity` = *Failed / Server disconnected*;

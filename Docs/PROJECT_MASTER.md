@@ -282,11 +282,14 @@ Before making significant gameplay or architecture changes, an AI working on thi
 
 ## 14. Current project status
 
-At the time this document was created:
-
-- repository has been created
-- Phase 0 environment/project initialization is being performed
-- core puppet gameplay has not yet been implemented
+- repository created; Phase 0 environment/project initialization complete
+- Unity MCP editor bridge working
+- **Phase 1 (physics prototype) in progress**: `Assets/_Project/Scenes/PuppetPrototype.unity`
+  has one jointed puppet, two feet on a rail, two control ropes tied to the feet,
+  and two-zone tension input. Both-taut stands the puppet; both-slack lowers it
+  into a coherent crouch; one-side-taut leans it. Physics is stable but all tuning
+  values are a baseline for hands-on testing — see `DEVELOPMENT_LOG.md` (2026-09-04).
+  Not yet built: combat, weapons, a second puppet, anything past milestone 1.
 - all gameplay details remain open to testing and refinement
 
 ---
