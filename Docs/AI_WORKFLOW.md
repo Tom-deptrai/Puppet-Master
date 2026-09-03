@@ -75,7 +75,26 @@ Các mốc lớn (xem `PROJECT_MASTER.md` §12):
 
 ## 7. Unity MCP
 
-- MCP server: lệnh `unity mcp` (Unity CLI chính thức).
-- Cần Unity Editor **đang mở** project này để MCP thao tác trực tiếp lên Editor.
-- Nếu tool MCP chưa xuất hiện trong phiên trợ lý: mở Editor rồi khởi động lại
-  phiên trợ lý để nạp lại MCP.
+Cho phép trợ lý đọc/điều khiển Unity Editor trực tiếp (149 tool). **Đã hoạt động**
+(xem `DEVELOPMENT_LOG.md` 2026-09-04).
+
+Ba thành phần phải cùng đúng:
+
+1. **Editor bridge:** package `com.unity.pipeline` (trong `Packages/manifest.json`) —
+   bridge chính thức của Unity CLI. Kiểm tra: `unity pipeline list`.
+   Nâng cấp: `unity pipeline upgrade`.
+2. **Unity Editor đang mở** project này. Kiểm tra: `unity status --format json`
+   → phải thấy `state: ready`, `port: 7800`. Pipeline server = `http://127.0.0.1:7800`.
+3. **MCP client config** trỏ đúng:
+   - Lệnh: `/Users/maccuatao/.unity/bin/unity mcp --project-path "<đường dẫn project>"`
+     (đường dẫn **tuyệt đối** — app GUI không có `PATH` của shell).
+   - Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`
+     — cấu hình bằng `unity mcp configure claude --project-path "<project>" --yes`.
+   - Claude Code: `~/.claude.json` → `mcpServers.unity-editor-mcp`.
+
+**Khi tool MCP không xuất hiện / báo Failed:**
+- `unity status` không thấy Editor → mở Editor.
+- `unity pipeline list` → `hasPipelinePackage: false` → `unity pipeline install`.
+- Config đã đúng nhưng phiên trợ lý vẫn không thấy tool → **mở phiên trợ lý mới**
+  (MCP chỉ nạp lúc khởi động phiên); Claude Desktop thì thoát & mở lại app.
+- Kiểm tra nhanh không cần client: `unity list --project-path "<project>" --format json`.

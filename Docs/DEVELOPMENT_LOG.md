@@ -8,6 +8,52 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Sửa Unity MCP (hoàn tất, không phải Phase 1)
+
+**Vấn đề:** Claude Desktop báo MCP `unity` = *Failed / Server disconnected*;
+`tools/list` rỗng dù Unity Editor đang mở.
+
+**Nguyên nhân (2 lỗi độc lập):**
+1. **Thiếu Editor bridge.** Unity CLI (`unity mcp`, `unity status`, `unity list`)
+   nói chuyện với Editor qua package chính thức **`com.unity.pipeline`**. Project
+   chưa có package này → `hasPipelinePackage: false`, `pipelineServer.isReachable: false`
+   → `unity mcp` expose **0 tool**.
+2. **Đường dẫn lệnh tương đối.** Cả 2 file config MCP dùng `command: "unity"`. App GUI
+   (Claude Desktop / Claude Code) không kế thừa `PATH` của shell nên không tìm thấy
+   `unity` (nằm ở `~/.unity/bin`) → server không khởi động được. (`godot` chạy được
+   vì nó dùng đường dẫn tuyệt đối.)
+
+**Đã sửa:**
+- `unity pipeline install --project-path <project>` → thêm `com.unity.pipeline@0.6.0-exp.1`
+  vào `Packages/manifest.json` (đây là bridge **chính thức** của Unity CLI, không phải
+  MCP bên thứ ba).
+- Khởi động lại Unity Editor để nó resolve + compile package. Pipeline server chạy tại
+  `http://127.0.0.1:7800`, `unity status` → `state: ready`, `unity list` → **149 tool**.
+- Claude Desktop: `unity mcp configure claude --project-path <project> --yes` (lệnh
+  chính thức) → sửa `command` thành đường dẫn tuyệt đối `~/.unity/bin/unity` và ghim
+  `--project-path`. Backup: `claude_desktop_config.json.bak-phase0-*`.
+- Claude Code (`~/.claude.json`, không có `claude` CLI nên sửa JSON có backup): entry
+  `unity-editor-mcp` → `command: /Users/maccuatao/.unity/bin/unity`,
+  `args: ["mcp","--project-path","<project>"]`. Backup: `~/.claude.json.bak-phase0-*`.
+- Mở project trong Editor 6.5 làm URP tự migrate `Mobile/PC_RPAsset.asset`
+  (`k_AssetVersion 12→13`), `URPProjectSettings.asset`, `PackageManagerSettings.asset`
+  sang định dạng mới — vô hại, đã commit.
+
+**Kiểm chứng (qua MCP, chỉ thao tác đọc):**
+- `initialize` → `unity-mcp 1.0.0-beta.6`, protocol `2025-06-18`
+- `tools/list` → **149 tool**
+- `get_scene_hierarchy` → đọc đúng scene `Bootstrap` (Main Camera / Directional Light / Global Volume)
+- `list_open_scenes`, `get_build_settings`, `get_console_logs` → OK, **0 error** trong console
+- Không thay đổi gameplay.
+
+**Cần khởi động lại:**
+- **Claude Desktop:** phải thoát & mở lại để nạp config mới.
+- **Claude Code:** phiên hiện tại không thấy tool `unity` (MCP nạp lúc mở phiên) —
+  mở **phiên mới** khi Editor đang chạy project này.
+- **Unity Editor:** *không* cần restart nữa; giữ mở để MCP hoạt động (pid hiện tại 9760).
+
+---
+
 ## 2026-09-04 — Phase 0: Khởi tạo nền móng kỹ thuật
 
 **Mục tiêu:** Thiết lập project Unity sạch, chuyên nghiệp, sẵn sàng phát triển
