@@ -8,6 +8,132 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Phase 1.1: Tuning symmetry + rope layout + facing model
+
+Chủ dự án chơi thử Phase 1, chốt 5 vấn đề + 1 bổ sung quan trọng về hệ quy chiếu.
+Báo cáo đầy đủ: [`PhaseReports/PHASE_01_1_REPORT.md`](PhaseReports/PHASE_01_1_REPORT.md).
+
+### Facing model (bổ sung — quan trọng nhất)
+
+Puppet **không** quay mặt vào camera nữa. Mỗi puppet đứng một bên arena và **quay
+mặt về phía đối thủ**:
+
+- `PlayerSide.Left`  → puppet ở `X ≈ -1.0`, **facing +X** (đối thủ bên phải)
+- `PlayerSide.Right` → puppet ở `X ≈ +1.0`, **facing -X** (đối thủ bên trái)
+- `facingSign = -side.Sign()` (+1 cho Left). Mọi thứ trong builder tính từ
+  `originX` + `Fwd(d)` = "cách puppet `d` mét về phía đối thủ".
+- Quy chiếu tư thế: **Forward Lean** = nghiêng về phía đối thủ, **Backward Lean** =
+  ra xa. HUD báo `ForwardLeanDeg` (dương = forward), độc lập với side.
+- Input giữ theo **cơ thể** puppet: Left Rope = Foot_L, Right Rope = Foot_R.
+  Mapping hiện tại: **Right rope căng → forward**, **Left rope căng → backward**
+  (đảo dấu `leanFromImbalance` để hoán đổi).
+- Body layout đổi: hai chân **fore/aft trên ray** (Foot_L dẫn trước), thân hẹp theo
+  X + rộng theo Z, vai ở `±Z`, tay ở tư thế guard nhẹ hướng trước, có cục "mũi"
+  (`Head/Face`) chỉ hướng facing để không nhầm.
+
+### 1. Rope / pulley layout mới
+
+- Puppet dời ra 1/3 màn hình bên mình (`originX = ±1.0`); vùng giữa (combat) sạch.
+- Pulley treo **thẳng trên mỗi bàn chân** (`Fwd(±0.16)`, Y 3.05–3.35) — dây gần như
+  thẳng đứng, **không cắt torso/head**, không hướng về phía đối thủ.
+- Tách **lực** khỏi **hình**: `RopeVisual` vẽ dây tới `pulley`; lực kéo
+  (`PuppetRopeController.RopePull`) tác động ở bàn chân về phía `forceAnchor` —
+  điểm thẳng đứng ngay trên foot-home, đối xứng, không lệ thuộc pulley.
+- `PuppetRig` thêm `side`, `Leg.forceAnchor`, `Leg.railHomeX`, `standingFootSeparation`.
+- Mirror: 2 menu — *Puppet Master ▸ Phase 1 ▸ Build Puppet Prototype — Left side* và
+  *— Right side (mirror test)*. `Build(PlayerSide)` dùng chung. Scene commit = Left.
+
+### 2. Hai chân riêng biệt (sửa chồng chân)
+
+- **Nguyên nhân Phase 1:** hai chân side-by-side, gối gập trong mặt phẳng màn hình
+  ép hai cẳng chân chụm về giữa; `Physics.IgnoreCollision` tắt **toàn bộ** va chạm
+  giữa các bộ phận → không có gì chặn chân xuyên nhau.
+- **Sửa:** chân fore/aft (khác vị trí X trên ray) → hình học không còn ép chụm;
+  rail `xDrive` spring **2600** giữ mỗi chân ở home (±0.16, cách nhau ~0.32 m),
+  `xMotion` chỉ trượt ±0.10 m; `IgnoreAdjacentCollisions()` chỉ tắt va chạm giữa
+  các cặp **nối khớp trực tiếp** → LowerLeg_L ↔ LowerLeg_R vẫn va chạm nhau.
+- Kết quả mọi trạng thái: foot separation 0.29–0.36 m, không swap, không xuyên,
+  hai cẳng chân luôn ở `Z ≈ 0` (không chồng theo chiều sâu).
+
+### 3. Sửa asymmetry trái/phải
+
+- **Nguyên nhân:** `spineFoldAngle`/`neckFoldAngle` (Phase 1) hardcode +8°/+10° về
+  **một phía** (trục Z) làm target spine ở slack luôn lệch +Z; spring slack yếu để
+  gravity khuếch đại (positive feedback) tới sát joint limit +50°. Torso slack lệch
+  ~+48°. Cộng thêm lean-term → một chiều cộng dồn (28°), chiều kia gần triệt tiêu (1°).
+- **Sửa:**
+  1. Bỏ hẳn "fold" nghiêng của spine/neck. Spine/neck chỉ track `leanDeg` (đối xứng).
+  2. Squat = `f(combined tension)` (giống nhau cả hai chân) → **không** còn lệch do
+     chân dài/ngắn khác nhau.
+  3. Lean = `(l - r) · leanFromImbalance · leanPolarity` — nguồn Z-lean **duy nhất**.
+  4. Chân dựng đối xứng chính xác fore↔aft trong builder (part/anchor mirror đúng).
+  5. Spine slack spring 2200, pelvis slack 2800, torso assist 45 (cap 110) → không
+     còn runaway.
+- Kết quả: `L1/R0 = -39.8°`, `L0/R1 = +41.3°` (lệch 1.5°, ~3.7%). Right side y hệt.
+
+### 4. Biên độ nghiêng
+
+- `leanFromImbalance = 24` → thực tế ~40° khi một dây full, dây kia 0 (trong dải
+  mục tiêu 35–45°). Ổn định (vel ≤ 0.02), chân đúng ray, phục hồi về giữa khi trả
+  tension đều.
+
+### 5. Hạ thấp tư thế slack
+
+- Squat driven by combined tension: `kneeSquatDeg 100`, `hipSquatDeg 62`,
+  `ankleSquatDeg -40` (trục sagittal — mở khoá `angularZ`... thực chất vẫn quay
+  quanh world Z vì puppet phẳng trong mặt phẳng X-Y; "sagittal" ở đây = forward/back).
+  `legSquatSlackSpring 600`. Pelvis slack → **53%** standing (mục tiêu 50–60%).
+  Gối gập rõ, head/torso thấp, coherent, chân vẫn tách.
+
+### 6. Tư thế high
+
+- Taut 1/1: pelvis **99%**, torso ~thẳng (lean +1.2°), chân tách 0.34 m, vel 0.00.
+  Chênh HIGH↔LOW: 1.05 m ↔ 0.56 m — rõ ngay.
+
+### Test (Left side, tất cả settle ~4–5 s)
+
+| State | Pelvis | Lean (fwd+) | Foot sep | Vel | Ổn định |
+|---|---|---|---|---|---|
+| A  L0/R0 | 0.56 m (53%) | +3.4° | 0.29 m | 0.06 | ✅ |
+| B  L1/R1 | 1.05 m (99%) | +1.2° | 0.34 m | 0.00 | ✅ |
+| C  L1/R0 | 1.00 m | **−39.8°** (backward) | 0.35 m | 0.01 | ✅ |
+| D  L0/R1 | 1.00 m | **+41.3°** (forward) | 0.36 m | 0.01 | ✅ |
+| E  1/0→0/1→1/1→0/0 | — | chuyển mượt, maxAngVel ≤ 0.9 rad/s | 0.29–0.36 | — | ✅ phục hồi về A |
+| F  crouch | leg Z-gap 0.00, knee X-gap 0.57 m, không xuyên | | | | ✅ |
+| G  Right mirror | L1/R0 −39.8°, L0/R1 +41.3° (y hệt Left, body-relative) | | | | ✅ |
+
+Console: **0 error / 0 warning** (Play + tất cả state). Health Check Phase 0 vẫn PASSED.
+
+### Giá trị tuning trước → sau
+
+| | Phase 1 | Phase 1.1 |
+|---|---|---|
+| Cơ chế lean | `leanFromImbalance` + fold spine hardcode | chỉ `(l−r)·gain·polarity`, đối xứng |
+| Cơ chế squat | fold per-side (bất đối xứng) | `f(combined)` per-side weight 0.25 |
+| leanFromImbalance | 12 (thực tế +28/−1, lệch) | 24 (thực tế ±40, lệch 1.5°) |
+| knee/hip fold slack | 52° / 5° (screen-plane splay) | knee 100° / hip 62° (sagittal squat) |
+| pelvis slack spring | 340 | 2800 |
+| spine slack spring | 230 (+ fold bias) | 2200 (không bias) |
+| pelvis @ slack | ~69% | ~53% |
+| chân | side-by-side ±0.12, splay/chồng | fore/aft ±0.16, rail xDrive 2600, luôn tách |
+| rope pull target | pulley (gần giữa) | forceAnchor (đối xứng, thẳng trên foot) |
+| pulley | (±0.42, 2.55) gần giữa | thẳng trên mỗi foot ở 1/3 màn hình bên mình |
+| self-collision | tắt hết | chỉ tắt cặp nối khớp; hai chân vẫn va nhau |
+| facing | quay vào camera | quay về đối thủ, có Face marker, mirror theo side |
+
+### Còn thử nghiệm / cần người dùng đánh giá
+
+- Forward lean 41° trông khá sâu (torso gần ngang) — đủ hay giảm về ~35°?
+- Slack 53% là "split-squat" rộng fore/aft — hình thể chấp nhận được không?
+- Lean bias khi slack +3.4° (không hẳn 0) và lệch dư ~1.5° giữa forward/backward.
+- Mapping Right rope = forward / Left rope = backward — đúng ý không? (đảo 1 dấu).
+- Dây trước vẫn đi sát cạnh đầu (~5 cm) khi đứng — chấp nhận không?
+- Tay guard còn mờ; head/cổ rủ hơi sâu ở slack.
+- Camera framing bên Right hơi lệch tâm; foot slide range ±0.10 m có thể hơi nhỏ cho footwork sau này.
+- Multitouch vẫn chưa test trên thiết bị.
+
+---
+
 ## 2026-09-04 — Phase 1: Prototype cơ chế con rối + hai dây
 
 **Mục tiêu:** prototype vật lý đầu tiên kiểm chứng cơ chế cốt lõi — một con rối

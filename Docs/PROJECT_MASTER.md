@@ -284,12 +284,16 @@ Before making significant gameplay or architecture changes, an AI working on thi
 
 - repository created; Phase 0 environment/project initialization complete
 - Unity MCP editor bridge working
-- **Phase 1 (physics prototype) in progress**: `Assets/_Project/Scenes/PuppetPrototype.unity`
-  has one jointed puppet, two feet on a rail, two control ropes tied to the feet,
-  and two-zone tension input. Both-taut stands the puppet; both-slack lowers it
-  into a coherent crouch; one-side-taut leans it. Physics is stable but all tuning
-  values are a baseline for hands-on testing — see `DEVELOPMENT_LOG.md` (2026-09-04).
-  Not yet built: combat, weapons, a second puppet, anything past milestone 1.
+- **Phase 1 / 1.1 (physics prototype) in progress**: `Assets/_Project/Scenes/PuppetPrototype.unity`
+  has one jointed puppet standing on its side of the arena and **facing the
+  (imagined) opponent**, two feet fore/aft on a rail, two control ropes tied to the
+  feet with pulleys behind the puppet (clear of the combat zone). Two-zone tension
+  input. Both-taut stands the puppet (~99%); both-slack drops it into a coherent
+  crouch (~53%); one rope taut leans it ~40° forward/backward (symmetric within
+  ~1.5°). `PlayerSide.Left/Right` mirrors the whole layout. Physics is stable but
+  all tuning values are a baseline for hands-on testing — see `DEVELOPMENT_LOG.md`
+  and `PhaseReports/PHASE_01_1_REPORT.md` (2026-09-04). Not yet built: combat,
+  weapons, a second puppet, anything past milestone 1.
 - all gameplay details remain open to testing and refinement
 
 ---

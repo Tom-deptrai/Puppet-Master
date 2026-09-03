@@ -3,110 +3,165 @@ using UnityEngine;
 namespace PuppetMaster.Prototype
 {
     /// <summary>
-    /// Phase 1 prototype. Turns two normalized tension values (0 = rope fully
-    /// slack, 1 = rope fully taut) into physics forces on a jointed puppet.
+    /// Phase 1.1 prototype. Two normalized tension values (0 = rope slack,
+    /// 1 = rope taut) drive a jointed puppet, fully symmetrically:
     ///
-    /// The puppet is a marionette-style planar rig on a rail. The ropes' tension
-    /// is what powers the standing:
+    ///   squat depth  = f(combined tension)   -> both legs, identical -> no L/R bias
+    ///   lean angle   = f(tension difference) -> pelvis + spine roll, signed
     ///
-    ///  * both taut  -> the pelvis→world joint stiffens toward upright and the
-    ///                  leg joints straighten -> the puppet rises and stands.
-    ///  * both slack  -> those drives go limp; a small residual tone keeps a low,
-    ///                   knees-buckled crouch instead of a dead-ragdoll heap.
-    ///  * one taut     -> that leg straightens while the other stays buckled, the
-    ///                    pelvis rolls and the torso leans -> left/right asymmetry.
+    ///   both taut  -> stands tall
+    ///   both slack  -> deep, coherent crouch (knees forward, feet planted apart)
+    ///   one taut     -> half-squat + clear lean toward the taut rope
     ///
-    /// No animation — every pose comes from ConfigurableJoint slerp drives plus a
-    /// rope pull applied at each foot. All numbers here are a tuning BASELINE.
+    /// No animation. Every pose is ConfigurableJoint slerp drives + a rope pull
+    /// applied at each foot. Numbers here are a tuning BASELINE, not a spec.
     /// </summary>
     [RequireComponent(typeof(PuppetRig))]
     public sealed class PuppetRopeController : MonoBehaviour
     {
         [Header("Tension response")]
-        [Range(0.3f, 4f)] public float tensionGamma = 1.3f;
+        [Range(0.3f, 4f)] public float tensionGamma = 1.25f;
         [Min(1f)] public float tensionSmoothing = 14f;
 
-        [Header("Pelvis → world drive  (the main 'stand up' force)")]
-        public float pelvisSlackSpring = 340f;
-        public float pelvisStandSpring = 4200f;
-        public float pelvisSlackDamper = 42f;
-        public float pelvisStandDamper = 260f;
-        public float pelvisMaxForce = 40000f;
-        [Tooltip("Extra pelvis lean (deg) from the left/right tension difference.")]
-        public float leanFromImbalance = 12f;
+        [Header("Squat — driven by COMBINED tension (symmetric)")]
+        [Tooltip("0 = squat depth is purely the combined tension; 1 = purely each leg's own rope.")]
+        [Range(0f, 1f)] public float perSideSquatWeight = 0.25f;
+        [Tooltip("Knee flexion (deg, about the sagittal axis) at full squat.")]
+        public float kneeSquatDeg = 100f;
+        public float hipSquatDeg = 62f;
+        public float ankleSquatDeg = -40f;
+        public float legSquatSlackSpring = 600f;
+        public float legSquatStandSpring = 2800f;
+        public float legSquatDamper = 120f;
+        public float legSquatMaxForce = 22000f;
 
-        [Header("Leg drive — hip + knee (per side)")]
-        public float legSlackSpring = 150f;
-        public float legStandSpring = 2600f;
-        public float legSlackDamper = 18f;
-        public float legStandDamper = 150f;
-        public float legMaxForce = 20000f;
-        [Tooltip("Hip splay (deg) when the rope is fully slack.")]
-        public float hipFoldAngle = 5f;
-        [Tooltip("Knee buckle (deg) when the rope is fully slack.")]
-        public float kneeFoldAngle = 52f;
-        [Tooltip("Left/right legs buckle in mirror so a slack puppet sinks straight down.")]
-        public bool mirrorRightLeg = true;
+        [Header("Lean — driven by tension DIFFERENCE (signed, symmetric)")]
+        [Tooltip("Degrees of lean when one rope is fully taut and the other fully slack. " +
+                 "Positive result = LEFT rope pulls the puppet BACKWARD (away from opponent); " +
+                 "negate this field to make the Left rope pull forward instead.")]
+        public float leanFromImbalance = 24f;
+        [Range(0f, 1f)] public float spineLeanFollow = 0.35f;
+        [Range(0f, 1f)] public float neckLeanFollow = 0.2f;
+        [Tooltip("How much the hips counter-rotate so the thighs stay vertical while the pelvis leans.")]
+        [Range(0f, 1f)] public float hipLeanCounter = 0.5f;
 
-        [Header("Ankle drive (per side)")]
-        public float ankleSlackSpring = 60f;
-        public float ankleStandSpring = 700f;
-        public float ankleDamper = 30f;
-        public float ankleMaxForce = 6000f;
-        public float ankleFoldAngle = 12f;
+        [Header("Pelvis → world drive (upright + lean)")]
+        public float pelvisSlackSpring = 2800f;
+        public float pelvisStandSpring = 4600f;
+        public float pelvisDamper = 260f;
+        public float pelvisMaxForce = 45000f;
 
-        [Header("Spine + neck drive (combined tension)")]
-        public float spineSlackSpring = 230f;
-        public float spineStandSpring = 2600f;
-        public float spineSlackDamper = 20f;
-        public float spineStandDamper = 150f;
-        public float spineMaxForce = 16000f;
-        public float spineFoldAngle = 8f;
-        public float neckFoldAngle = 10f;
+        [Header("Spine + neck drive")]
+        public float spineSlackSpring = 2200f;
+        public float spineStandSpring = 3000f;
+        public float spineDamper = 150f;
+        public float spineMaxForce = 18000f;
 
         [Header("Torso balance nudge (small AddTorque assist)")]
-        public float torsoUprightAssist = 25f;
-        public float torsoUprightDamping = 6f;
-        public float maxAssistTorque = 60f;
+        public float torsoUprightAssist = 45f;
+        public float torsoUprightDamping = 8f;
+        public float maxAssistTorque = 110f;
 
-        [Header("Rope pull — force applied AT each foot, toward its pulley")]
-        public float ropePull = 45f;
+        [Header("Rope pull — force at each foot toward its (symmetric) overhead anchor")]
+        public float ropePull = 40f;
 
         [Header("Physics solver (runtime only — never touches ProjectSettings)")]
-        [Min(1)] public int solverIterations = 24;
-        [Min(1)] public int solverVelocityIterations = 12;
+        [Min(1)] public int solverIterations = 26;
+        [Min(1)] public int solverVelocityIterations = 14;
 
         [Header("Tuning override (ignores input while ON — for MCP/inspector testing)")]
         public bool debugOverrideInput;
         [Range(0f, 1f)] public float debugLeft = 1f;
         [Range(0f, 1f)] public float debugRight = 1f;
 
-        // ---- read-only state for the HUD / rope visuals ----
+        // ---- read-only state ----
         public float LeftInput { get; private set; }
         public float RightInput { get; private set; }
         public float LeftTension { get; private set; }
         public float RightTension { get; private set; }
         public float CombinedTension => 0.5f * (LeftTension + RightTension);
 
+        /// <summary>Raw signed torso roll about world Z (debug only — screen space).</summary>
+        public float TorsoRollZDeg
+        {
+            get
+            {
+                if (_rig == null || _rig.torso == null) return 0f;
+                float z = _rig.torso.transform.eulerAngles.z;
+                return z > 180f ? z - 360f : z;
+            }
+        }
+
+        /// <summary>
+        /// Signed lean in the FACING frame: positive = leaning toward the opponent
+        /// (forward), negative = leaning away (backward). Side-independent.
+        /// </summary>
+        public float ForwardLeanDeg => -_leanPolarity * TorsoRollZDeg;
+
+        public float FootSeparation
+        {
+            get
+            {
+                if (_rig == null || _rig.left.foot == null || _rig.right.foot == null) return 0f;
+                return Mathf.Abs(_rig.right.foot.position.x - _rig.left.foot.position.x);
+            }
+        }
+
+        public float PelvisHeight => _rig != null && _rig.pelvis != null ? _rig.pelvis.position.y : 0f;
+
         PuppetRig _rig;
+        float _leanPolarity = 1f;
 
         void Awake()
         {
             _rig = GetComponent<PuppetRig>();
+            _leanPolarity = _rig.side == PlayerSide.Left ? 1f : -1f;
             Physics.defaultSolverIterations = Mathf.Max(Physics.defaultSolverIterations, solverIterations);
             Physics.defaultSolverVelocityIterations = Mathf.Max(Physics.defaultSolverVelocityIterations, solverVelocityIterations);
-            IgnoreSelfCollisions();
+            IgnoreAdjacentCollisions();
         }
 
-        void IgnoreSelfCollisions()
+        /// <summary>
+        /// Ignore collisions only between parts that are directly jointed together
+        /// (they always overlap at the joint) plus a couple of near neighbours.
+        /// Everything else keeps colliding — crucially LowerLeg_L vs LowerLeg_R and
+        /// the two feet — so the legs can never pass through each other.
+        /// </summary>
+        void IgnoreAdjacentCollisions()
         {
-            var cols = GetComponentsInChildren<Collider>();
-            for (int i = 0; i < cols.Length; i++)
-            for (int k = i + 1; k < cols.Length; k++)
-                Physics.IgnoreCollision(cols[i], cols[k], true);
+            Pair(_rig.pelvis, _rig.torso);
+            Pair(_rig.torso, _rig.head);
+            IgnoreLegChain(_rig.left);
+            IgnoreLegChain(_rig.right);
+
+            var uL = FindPart("UpperArm_L"); var lL = FindPart("LowerArm_L");
+            var uR = FindPart("UpperArm_R"); var lR = FindPart("LowerArm_R");
+            Pair(_rig.torso, uL); Pair(uL, lL);
+            Pair(_rig.torso, uR); Pair(uR, lR);
         }
 
-        /// <summary>Fed by <see cref="PuppetRopeInput"/>. Values are clamped to 0..1.</summary>
+        void IgnoreLegChain(in PuppetRig.Leg leg)
+        {
+            Pair(_rig.pelvis, leg.upperLeg);
+            Pair(leg.upperLeg, leg.lowerLeg);
+            Pair(leg.lowerLeg, leg.foot);
+        }
+
+        Rigidbody FindPart(string n)
+        {
+            foreach (var rb in GetComponentsInChildren<Rigidbody>())
+                if (rb.name == n) return rb;
+            return null;
+        }
+
+        static void Pair(Rigidbody a, Rigidbody b)
+        {
+            if (a == null || b == null) return;
+            foreach (var x in a.GetComponentsInChildren<Collider>())
+            foreach (var y in b.GetComponentsInChildren<Collider>())
+                Physics.IgnoreCollision(x, y, true);
+        }
+
         public void SetInput(float left, float right)
         {
             LeftInput = Mathf.Clamp01(left);
@@ -124,80 +179,71 @@ namespace PuppetMaster.Prototype
 
             float l = Shape(LeftTension);
             float r = Shape(RightTension);
-            float c = 0.5f * (l + r);
-            float leanZ = (l - r) * leanFromImbalance;
+            float combined = 0.5f * (l + r);
+            float diff = l - r;
 
-            // 1) pelvis is held upright by the ropes' combined pull
+            float squatL = Mathf.Lerp(1f - combined, 1f - l, perSideSquatWeight);
+            float squatR = Mathf.Lerp(1f - combined, 1f - r, perSideSquatWeight);
+            float leanDeg = diff * leanFromImbalance * _leanPolarity;
+
+            DriveLeg(_rig.left, squatL, leanDeg, combined);
+            DriveLeg(_rig.right, squatR, leanDeg, combined);
+
+            // pelvis: upright + lean, anchored to the world
             SetDrive(_rig.pelvisPlaneJoint,
-                Mathf.Lerp(pelvisSlackSpring, pelvisStandSpring, c),
-                Mathf.Lerp(pelvisSlackDamper, pelvisStandDamper, c),
-                pelvisMaxForce);
-            SetTargetLocal(_rig.pelvisPlaneJoint, Quaternion.Euler(0f, 0f, leanZ));
+                Mathf.Lerp(pelvisSlackSpring, pelvisStandSpring, combined), pelvisDamper, pelvisMaxForce);
+            SetTargetLocal(_rig.pelvisPlaneJoint, Quaternion.Euler(0f, 0f, leanDeg));
 
-            // 2) legs straighten with their own side's tension
-            DriveLeg(_rig.left, l, +1f);
-            DriveLeg(_rig.right, r, mirrorRightLeg ? -1f : +1f);
+            // spine + neck follow the lean
+            SetDrive(_rig.spine, Mathf.Lerp(spineSlackSpring, spineStandSpring, combined), spineDamper, spineMaxForce);
+            SetTargetLocal(_rig.spine, Quaternion.Euler(0f, 0f, leanDeg * spineLeanFollow));
+            SetDrive(_rig.neck, Mathf.Lerp(spineSlackSpring * 0.4f, spineStandSpring * 0.35f, combined), spineDamper, spineMaxForce * 0.4f);
+            SetTargetLocal(_rig.neck, Quaternion.Euler(0f, 0f, leanDeg * neckLeanFollow));
 
-            // 3) spine + neck follow combined tension
-            DriveBend(_rig.spine, c, spineFoldAngle, leanZ,
-                spineSlackSpring, spineStandSpring, spineSlackDamper, spineStandDamper, spineMaxForce);
-            DriveBend(_rig.neck, c, neckFoldAngle, leanZ * 0.4f,
-                spineSlackSpring * 0.4f, spineStandSpring * 0.35f, spineSlackDamper, spineStandDamper, spineMaxForce * 0.4f);
+            TorsoAssist(leanDeg);
 
-            // 4) tiny AddTorque nudge so the torso doesn't lag the pelvis
-            TorsoAssist(c, leanZ);
-
-            // 5) the required rope force, applied at the feet
             RopePull(_rig.left, l);
             RopePull(_rig.right, r);
         }
 
         float Shape(float t) => Mathf.Pow(Mathf.Clamp01(t), tensionGamma);
 
-        void DriveLeg(in PuppetRig.Leg leg, float t, float sideSign)
+        void DriveLeg(in PuppetRig.Leg leg, float squat, float leanDeg, float combined)
         {
-            SetDrive(leg.hip,
-                Mathf.Lerp(legSlackSpring, legStandSpring, t),
-                Mathf.Lerp(legSlackDamper, legStandDamper, t), legMaxForce);
-            SetDrive(leg.knee,
-                Mathf.Lerp(legSlackSpring, legStandSpring, t),
-                Mathf.Lerp(legSlackDamper, legStandDamper, t), legMaxForce);
-            SetDrive(leg.ankle,
-                Mathf.Lerp(ankleSlackSpring, ankleStandSpring, t), ankleDamper, ankleMaxForce);
+            float squatSpring = Mathf.Lerp(legSquatSlackSpring, legSquatStandSpring, combined);
 
-            Quaternion hipFold = Quaternion.Euler(0f, 0f, sideSign * hipFoldAngle);
-            Quaternion kneeFold = Quaternion.Euler(0f, 0f, sideSign * -kneeFoldAngle);
-            Quaternion ankleFold = Quaternion.Euler(0f, 0f, sideSign * ankleFoldAngle);
-            SetTargetLocal(leg.hip, Quaternion.Slerp(hipFold, Quaternion.identity, t));
-            SetTargetLocal(leg.knee, Quaternion.Slerp(kneeFold, Quaternion.identity, t));
-            SetTargetLocal(leg.ankle, Quaternion.Slerp(ankleFold, Quaternion.identity, t));
+            // Screen-plane (roll) component: hips counter-rotate so the thighs stay
+            // roughly vertical while the pelvis leans; knees/ankles stay planar.
+            float hipRoll = -leanDeg * hipLeanCounter;
+
+            DriveJoint(leg.hip, Quaternion.Euler(squat * hipSquatDeg, 0f, hipRoll), squatSpring, legSquatDamper, legSquatMaxForce);
+            DriveJoint(leg.knee, Quaternion.Euler(squat * kneeSquatDeg, 0f, 0f), squatSpring, legSquatDamper, legSquatMaxForce);
+            DriveJoint(leg.ankle, Quaternion.Euler(squat * ankleSquatDeg, 0f, 0f), squatSpring, legSquatDamper, legSquatMaxForce);
         }
 
-        void DriveBend(ConfigurableJoint joint, float t, float foldAngle, float leanZ,
-            float slackSpring, float standSpring, float slackDamper, float standDamper, float maxForce)
+        void DriveJoint(ConfigurableJoint j, Quaternion target, float spring, float damper, float maxForce)
         {
-            if (joint == null) return;
-            SetDrive(joint, Mathf.Lerp(slackSpring, standSpring, t), Mathf.Lerp(slackDamper, standDamper, t), maxForce);
-            Quaternion fold = Quaternion.Euler(0f, 0f, foldAngle);
-            Quaternion upright = Quaternion.Euler(0f, 0f, leanZ);
-            SetTargetLocal(joint, Quaternion.Slerp(fold, upright, t));
+            SetDrive(j, spring, damper, maxForce);
+            SetTargetLocal(j, target);
         }
 
-        void TorsoAssist(float t, float leanZ)
+        void TorsoAssist(float leanDeg)
         {
             var body = _rig.torso;
             if (body == null) return;
-            Vector3 desiredUp = Quaternion.Euler(0f, 0f, leanZ) * Vector3.up;
+            Vector3 desiredUp = Quaternion.Euler(0f, 0f, leanDeg) * Vector3.up;
             Vector3 err = Vector3.Cross(body.transform.up, desiredUp);
-            Vector3 torque = err * (torsoUprightAssist * t) - body.angularVelocity * (torsoUprightDamping * t);
+            Vector3 torque = err * torsoUprightAssist - body.angularVelocity * torsoUprightDamping;
             body.AddTorque(Vector3.ClampMagnitude(torque, maxAssistTorque), ForceMode.Acceleration);
         }
 
         void RopePull(in PuppetRig.Leg leg, float t)
         {
-            if (leg.foot == null || leg.pulley == null) return;
+            if (leg.foot == null) return;
+            Transform anchor = leg.forceAnchor != null ? leg.forceAnchor : leg.pulley;
+            if (anchor == null) return;
             Vector3 from = leg.ropeAttach != null ? leg.ropeAttach.position : leg.foot.worldCenterOfMass;
-            Vector3 dir = leg.pulley.position - from;
+            Vector3 dir = anchor.position - from;
             float d = dir.magnitude;
             if (d < 1e-4f) return;
             leg.foot.AddForceAtPosition(dir / d * (ropePull * t), from, ForceMode.Force);
@@ -215,8 +261,8 @@ namespace PuppetMaster.Prototype
 
         /// <summary>
         /// Drives a ConfigurableJoint toward <paramref name="targetLocalRotation"/>
-        /// (the child's rotation relative to the connected body). The rig is
-        /// authored standing, so identity == "hold the standing pose".
+        /// (child rotation relative to the connected body). Rig is authored
+        /// standing, so identity == "hold the standing pose".
         /// </summary>
         static void SetTargetLocal(ConfigurableJoint joint, Quaternion targetLocalRotation)
         {

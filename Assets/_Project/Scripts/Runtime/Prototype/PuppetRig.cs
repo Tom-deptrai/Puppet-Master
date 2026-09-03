@@ -4,12 +4,13 @@ using UnityEngine;
 namespace PuppetMaster.Prototype
 {
     /// <summary>
-    /// Phase 1 prototype only — contains NO combat.
+    /// Phase 1 / 1.1 prototype only — contains NO combat.
     /// Plain reference holder that <c>PuppetPrototypeBuilder</c> fills in so the
     /// runtime scripts can reach every physics part without name lookups.
     ///
     /// One jointed puppet, two feet constrained to a horizontal rail, two control
-    /// ropes whose gameplay force is applied at the two feet.
+    /// ropes. The rope VISUAL runs to an off-centre pulley (mirrorable per side);
+    /// the rope FORCE is applied at the foot toward a symmetric overhead anchor.
     /// </summary>
     public sealed class PuppetRig : MonoBehaviour
     {
@@ -20,20 +21,28 @@ namespace PuppetMaster.Prototype
             public Rigidbody lowerLeg;
             public Rigidbody foot;
 
-            [Tooltip("pelvis -> upperLeg (driven by this side's tension)")]
+            [Tooltip("pelvis -> upperLeg (driven)")]
             public ConfigurableJoint hip;
-            [Tooltip("upperLeg -> lowerLeg (driven by this side's tension)")]
+            [Tooltip("upperLeg -> lowerLeg (driven)")]
             public ConfigurableJoint knee;
-            [Tooltip("lowerLeg -> foot")]
+            [Tooltip("lowerLeg -> foot (driven)")]
             public ConfigurableJoint ankle;
-            [Tooltip("foot -> world: the rail constraint (slides on X, locked on Y/Z)")]
+            [Tooltip("foot -> world: the rail constraint (small X slide, Y/Z locked)")]
             public ConfigurableJoint railJoint;
 
-            [Tooltip("Overhead point the rope visually runs from.")]
+            [Tooltip("Where the rope is DRAWN to (off-centre, mirrors per side).")]
             public Transform pulley;
-            [Tooltip("Point on the foot the rope pull force is applied at.")]
+            [Tooltip("Where the rope FORCE points (symmetric, straight above the foot home).")]
+            public Transform forceAnchor;
+            [Tooltip("Point on the foot the rope force is applied at.")]
             public Transform ropeAttach;
+
+            [Tooltip("This foot's home X on the rail (world), captured by the builder.")]
+            public float railHomeX;
         }
+
+        [Header("Layout")]
+        public PlayerSide side = PlayerSide.Left;
 
         [Header("Core bodies")]
         public Rigidbody pelvis;
@@ -41,18 +50,20 @@ namespace PuppetMaster.Prototype
         public Rigidbody head;
 
         [Header("Core joints")]
-        [Tooltip("pelvis -> torso (driven by combined tension)")]
+        [Tooltip("pelvis -> torso (driven)")]
         public ConfigurableJoint spine;
-        [Tooltip("torso -> head (driven by combined tension)")]
+        [Tooltip("torso -> head (driven)")]
         public ConfigurableJoint neck;
-        [Tooltip("pelvis -> world: keeps the puppet in the 2.5D screen plane (locks depth)")]
+        [Tooltip("pelvis -> world: keeps depth locked and carries the upright drive")]
         public ConfigurableJoint pelvisPlaneJoint;
 
         [Header("Legs")]
         public Leg left;
         public Leg right;
 
-        /// <summary>Approx. standing pelvis height, captured by the builder for the debug HUD.</summary>
+        [Header("Reference values (captured by the builder)")]
         public float standingPelvisHeight = 1.06f;
+        [Tooltip("Foot separation in the authored standing pose.")]
+        public float standingFootSeparation = 0.40f;
     }
 }
