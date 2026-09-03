@@ -1,0 +1,99 @@
+# ==============================================================================
+# Puppet Master — .gitattributes
+# ------------------------------------------------------------------------------
+# 1. Unity-authored YAML is kept as text and merged with Unity's smart merge
+#    tool (UnityYAMLMerge / "unityyamlmerge"). Configure it once per machine:
+#      git config --global merge.unityyamlmerge.name  "Unity SmartMerge"
+#      git config --global merge.unityyamlmerge.driver \
+#        '"<UnityEditor>/Contents/Tools/UnityYAMLMerge" merge -p %O %B %A %A'
+#
+# 2. Git LFS patterns are ACTIVE but currently match zero files (Phase 0 has no
+#    large binaries). Git LFS is enabled locally for this repo only
+#    (`git lfs install --local`). Any large model / texture / audio / video
+#    added later is stored through LFS automatically. See Docs/PROJECT_MASTER.md.
+# ==============================================================================
+
+# Default: let Git decide, normalise line endings on commit.
+* text=auto
+
+# ----- Source -----------------------------------------------------------------
+*.cs                text diff=csharp eol=lf
+*.shader            text eol=lf
+*.cginc             text eol=lf
+*.hlsl              text eol=lf
+*.compute           text eol=lf
+*.asmdef            text eol=lf
+*.asmref            text eol=lf
+*.json              text eol=lf
+*.md                text eol=lf
+*.uss               text eol=lf
+*.uxml              text eol=lf
+
+# ----- Unity YAML (text, smart-merged) --------------------------------------
+*.meta              text eol=lf merge=unityyamlmerge
+*.unity             text eol=lf merge=unityyamlmerge
+*.prefab            text eol=lf merge=unityyamlmerge
+*.asset             text eol=lf merge=unityyamlmerge
+*.mat               text eol=lf merge=unityyamlmerge
+*.anim              text eol=lf merge=unityyamlmerge
+*.controller        text eol=lf merge=unityyamlmerge
+*.overrideController text eol=lf merge=unityyamlmerge
+*.mask              text eol=lf merge=unityyamlmerge
+*.mixer             text eol=lf merge=unityyamlmerge
+*.physicMaterial    text eol=lf merge=unityyamlmerge
+*.physicsMaterial2D text eol=lf merge=unityyamlmerge
+*.playable          text eol=lf merge=unityyamlmerge
+*.signal            text eol=lf merge=unityyamlmerge
+*.shadergraph       text eol=lf merge=unityyamlmerge
+*.shadersubgraph    text eol=lf merge=unityyamlmerge
+*.inputactions      text eol=lf
+
+# ----- Git LFS: 3D models ----------------------------------------------------
+*.fbx    filter=lfs diff=lfs merge=lfs -text
+*.blend  filter=lfs diff=lfs merge=lfs -text
+*.blend1 filter=lfs diff=lfs merge=lfs -text
+*.obj    filter=lfs diff=lfs merge=lfs -text
+*.dae    filter=lfs diff=lfs merge=lfs -text
+*.3ds    filter=lfs diff=lfs merge=lfs -text
+*.glb    filter=lfs diff=lfs merge=lfs -text
+*.gltf   filter=lfs diff=lfs merge=lfs -text
+*.abc    filter=lfs diff=lfs merge=lfs -text
+
+# ----- Git LFS: textures / images ------------------------------------------
+*.png    filter=lfs diff=lfs merge=lfs -text
+*.jpg    filter=lfs diff=lfs merge=lfs -text
+*.jpeg   filter=lfs diff=lfs merge=lfs -text
+*.tga    filter=lfs diff=lfs merge=lfs -text
+*.tif    filter=lfs diff=lfs merge=lfs -text
+*.tiff   filter=lfs diff=lfs merge=lfs -text
+*.psd    filter=lfs diff=lfs merge=lfs -text
+*.exr    filter=lfs diff=lfs merge=lfs -text
+*.hdr    filter=lfs diff=lfs merge=lfs -text
+*.bmp    filter=lfs diff=lfs merge=lfs -text
+*.gif    filter=lfs diff=lfs merge=lfs -text
+
+# ----- Git LFS: audio ------------------------------------------------------
+*.wav    filter=lfs diff=lfs merge=lfs -text
+*.mp3    filter=lfs diff=lfs merge=lfs -text
+*.ogg    filter=lfs diff=lfs merge=lfs -text
+*.aif    filter=lfs diff=lfs merge=lfs -text
+*.aiff   filter=lfs diff=lfs merge=lfs -text
+*.flac   filter=lfs diff=lfs merge=lfs -text
+
+# ----- Git LFS: video ----------------------------------------------------
+*.mp4    filter=lfs diff=lfs merge=lfs -text
+*.mov    filter=lfs diff=lfs merge=lfs -text
+*.webm   filter=lfs diff=lfs merge=lfs -text
+
+# ----- Git LFS: fonts ----------------------------------------------------
+*.ttf    filter=lfs diff=lfs merge=lfs -text
+*.otf    filter=lfs diff=lfs merge=lfs -text
+
+# ----- Git LFS: native libraries / bundles ----------------------------------
+*.a       filter=lfs diff=lfs merge=lfs -text
+*.aar     filter=lfs diff=lfs merge=lfs -text
+*.so      filter=lfs diff=lfs merge=lfs -text
+*.bundle  filter=lfs diff=lfs merge=lfs -text
+*.dylib   filter=lfs diff=lfs merge=lfs -text
+*.dll     filter=lfs diff=lfs merge=lfs -text
+*.unitypackage filter=lfs diff=lfs merge=lfs -text
