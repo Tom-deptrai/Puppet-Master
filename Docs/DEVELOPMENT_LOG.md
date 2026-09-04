@@ -8,6 +8,27 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Finalize mobile two thumb input
+
+Hoàn thiện EnhancedTouch 2-thumb cho test iPhone. Không đụng combat/AI/physics/sword.
+
+### Touch
+- Ownership khóa ở **Touch Began** theo nửa màn hình; không đổi ngón khi kéo chéo midline.
+- Mỗi nửa tối đa 1 ngón (Began thứ hai bị bỏ).
+- Normalize theo kích thước màn hình: vertical 30% height, horizontal 18% width, deadzone **2% width** (min 8 px).
+- Release mượt (rise/fall speeds). Desktop A/L/Space, Q/E, J/K giữ nguyên; mouse tắt khi có touch thật.
+
+### Debug UI
+Overlay đáy màn hình: LEFT/RIGHT THUMB — pos, tension, horizontal.
+
+### iOS readiness
+- Landscape only (autorotate L/R, portrait tắt).
+- **PuppetPrototype** đưa lên scene 0 trong Build Settings (Bootstrap còn lại).
+- `iOSBuild/` thêm vào `.gitignore` — không commit Xcode output.
+- Script thay đổi cần **Unity Build iOS lại** mới lên máy; không đổi signing/bundle id.
+
+---
+
 ## 2026-09-04 — Fix combat foundation sword arms and AI slash
 
 Chỉ sửa 3 nền tảng combat — không thêm feature mới.
