@@ -8,6 +8,47 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Refine puppet lean, collapse, arms and rail
+
+Giải quyết 4 vấn đề kỹ thuật vật lý và rig theo yêu cầu:
+
+### 1. Tăng Inward / Outward Lean (~2x)
+- Tăng `depthGain` lên `36f` (kết hợp `spineFollow = 0.38f`, `neckFollow = 0.26f`, `depthHipFollow = 0.40f`).
+- Nâng giới hạn góc `angularXLimit` (depth) trên các joint (`pelvisPlaneJoint`, `spine`, `neck` lên `±55°`, `hip` lên `±50°`, `ankle` lên `±18°`).
+- Kết quả kiểm thử Play Mode:
+  - Torso depth lean đạt ~52.1° ở extreme (mục tiêu 45–50°).
+  - Pelvis depth lean đạt ~27.2–27.9° (mục tiêu 30–35°).
+  - Head depth lean đạt ~65.8–67.7° (toàn thân uốn đồng bộ theo depth).
+  - Yaw drift duy trì triệt để ~0–1° (không xoay lưng hay biến dạng 3D).
+  - Bàn chân giữ vững 100% trên ray (Y = 0.085m).
+
+### 2. Sửa cơ chế hạ trọng tâm khi thả dây (Dynamic Collapse)
+- Loại bỏ việc ép target về góc đứng 0° khi tension giảm:
+  - Tính `activeBlend` dựa trên độ căng dây.
+  - Khi tension chùng (`combined → 0`), `fbDeg` mượt mà theo sát góc nghiêng thực tế `ForwardLeanDeg` hiện tại thay vì ép về đứng thẳng.
+  - Giảm spring slack (`pelvisSlackSpring = 1200f`, `spineSlackSpring = 1500f`, `legSlackSpring = 900f`) và scale `torsoUprightAssist` theo tension để gravity, quán tính (inertia) và joint constraints quyết định hướng sụp.
+- Kết quả:
+  - Đang nghiêng forward thả dây → sụp tự nhiên về phía forward (ForwardLeanDeg giữ ~61.2°, pelvis hạ từ 1.06m xuống 0.56m).
+  - Đang nghiêng backward thả dây → sụp tự nhiên về phía backward (ForwardLeanDeg giữ -69.3°, pelvis hạ xuống 0.33m).
+  - Đang nghiêng depth thả dây → sụp theo hướng depth.
+  - Khi kéo căng dây trở lại → puppet đứng thẳng dậy ngay tức thì (recovers to 1.05m standing in < 0.2s).
+
+### 3. Sửa hệ tay (Đúng 2 tay giải phẫu rõ ràng)
+- Tái cấu trúc rig tay trong builder với `BuildArm`:
+  - Shoulder → Upper Arm (`CapsuleCollider`) → Elbow Joint (hình cầu thị giác `Elbow_Mesh` tại khớp) → Forearm/Lower Arm (`CapsuleCollider`) → Hand (`BoxCollider`).
+  - Khớp Elbow (`ConfigurableJoint`) và Wrist (`ConfigurableJoint`) có spring tự nhiên để tay co guard phía trước.
+  - Loại bỏ hoàn toàn cảm giác 4 tay (tổng cộng đúng 2 tay: Left arm ở `+ShoulderZ`, Right arm ở `-ShoulderZ`).
+  - Sẵn sàng cấu trúc Hand để gắn vũ khí ở các phase sau.
+
+### 4. Sửa Rail bị lệch
+- Cân chỉnh hình học và toạ độ:
+  - Đặt `Rail` tại `(originX, 0.025f, 0f)`, kích thước `(1.20f, 0.05f, 0.24f)` để mặt trên của ray nằm chính xác tại `Y = 0.050m`.
+  - Bàn chân (`FootY = 0.085f`, chiều cao `0.07f`) tiếp xúc đáy đúng tại `Y = 0.050m` nằm khít trên ray.
+  - Rail slots nằm ngay dưới 2 bàn chân `Y = 0.048m`.
+  - Đối xứng hoàn hảo cho cả `PlayerSide.Left` (`originX = -1.0`) và `PlayerSide.Right` (`originX = +1.0`).
+
+---
+
 ## 2026-09-04 — Phase 1.2: Advanced 4-axis puppet control
 
 Hoàn thiện hệ điều khiển lõi trước khi thêm vũ khí. Báo cáo đầy đủ:

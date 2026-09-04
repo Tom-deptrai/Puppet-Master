@@ -37,8 +37,8 @@ namespace PuppetMaster.Editor
 
         const float ArenaOffset = 1.0f;
         const float StanceHalf = 0.16f;
-        const float FootY = 0.06f;
-        const float ShoulderZ = 0.15f;
+        const float FootY = 0.085f;
+        const float ShoulderZ = 0.19f;
 
         [MenuItem("Puppet Master/Phase 1/Build Puppet Prototype — Left side")]
         public static void BuildLeft() => Build(PlayerSide.Left);
@@ -84,11 +84,9 @@ namespace PuppetMaster.Editor
             face.transform.localScale = new Vector3(0.06f, 0.09f, 0.13f);
             face.GetComponent<MeshRenderer>().sharedMaterial = mFace;
 
-            // ---- arms: light forward guard at the sides (±Z) ----
-            var uArmL = Part("UpperArm_L", PrimitiveType.Capsule, new Vector3(Fwd(0f), 1.36f, ShoulderZ), new Vector3(0.08f, 0.15f, 0.08f), 1.5f, mLimb, puppet, 1.1f);
-            var lArmL = Part("LowerArm_L", PrimitiveType.Capsule, new Vector3(Fwd(0.09f), 1.15f, ShoulderZ), new Vector3(0.07f, 0.14f, 0.07f), 1.0f, mLimb, puppet, 1.1f);
-            var uArmR = Part("UpperArm_R", PrimitiveType.Capsule, new Vector3(Fwd(0f), 1.36f, -ShoulderZ), new Vector3(0.08f, 0.15f, 0.08f), 1.5f, mLimb, puppet, 1.1f);
-            var lArmR = Part("LowerArm_R", PrimitiveType.Capsule, new Vector3(Fwd(0.09f), 1.15f, -ShoulderZ), new Vector3(0.07f, 0.14f, 0.07f), 1.0f, mLimb, puppet, 1.1f);
+            // ---- arms: exactly 2 arms total (Shoulder -> Upper Arm -> Elbow Joint -> Forearm -> Hand) ----
+            var (uArmL, lArmL, handL, elbowL) = BuildArm("L", ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
+            var (uArmR, lArmR, handR, elbowR) = BuildArm("R", -ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
 
             // ---- legs: fore/aft on the rail, exact fore↔aft mirror.
             //      Foot_R LEADS (toward opponent, +facing); Foot_L is the rear foot.
@@ -103,20 +101,18 @@ namespace PuppetMaster.Editor
 
             // ---- joints. axis=(1,0,0), secondary=(0,1,0):
             //      angZ = fight plane (fwd/back + squat), angX = depth, angY = yaw(LOCKED). ----
-            var spine = Bend(torso, pelvis, new Vector3(Fwd(0f), 1.17f, 0f), fight: 75f, depth: 45f, driven: true);
-            var neck = Bend(head, torso, new Vector3(Fwd(0f), 1.64f, 0f), fight: 55f, depth: 45f, driven: true);
+            var spine = Bend(torso, pelvis, new Vector3(Fwd(0f), 1.17f, 0f), fight: 75f, depth: 55f, driven: true);
+            var neck = Bend(head, torso, new Vector3(Fwd(0f), 1.64f, 0f), fight: 55f, depth: 55f, driven: true);
 
-            var shoulderL = Bend(uArmL, torso, new Vector3(Fwd(0f), 1.49f, ShoulderZ), fight: 120f, depth: 70f, driven: false, passiveSpring: 40f);
-            var elbowL = Bend(lArmL, uArmL, new Vector3(Fwd(0.03f), 1.25f, ShoulderZ), fight: 130f, depth: 25f, driven: false, passiveSpring: 30f);
-            var shoulderR = Bend(uArmR, torso, new Vector3(Fwd(0f), 1.49f, -ShoulderZ), fight: 120f, depth: 70f, driven: false, passiveSpring: 40f);
-            var elbowR = Bend(lArmR, uArmR, new Vector3(Fwd(0.03f), 1.25f, -ShoulderZ), fight: 130f, depth: 25f, driven: false, passiveSpring: 30f);
+            var shoulderL = Bend(uArmL, torso, new Vector3(Fwd(0f), 1.50f, ShoulderZ), fight: 120f, depth: 75f, driven: false, passiveSpring: 45f);
+            var shoulderR = Bend(uArmR, torso, new Vector3(Fwd(0f), 1.50f, -ShoulderZ), fight: 120f, depth: 75f, driven: false, passiveSpring: 45f);
 
-            var hipL = Bend(uLegL, pelvis, new Vector3(Fwd(-0.035f), 0.97f, 0f), fight: 140f, depth: 40f, driven: true);
+            var hipL = Bend(uLegL, pelvis, new Vector3(Fwd(-0.035f), 0.97f, 0f), fight: 140f, depth: 50f, driven: true);
             var kneeL = Bend(lLegL, uLegL, new Vector3(Fwd(-0.11f), 0.54f, 0f), fight: 150f, depth: 0f, driven: true);
-            var ankleL = Bend(footL, lLegL, new Vector3(Fwd(-0.15f), 0.11f, 0f), fight: 60f, depth: 12f, driven: true);
-            var hipR = Bend(uLegR, pelvis, new Vector3(Fwd(0.035f), 0.97f, 0f), fight: 140f, depth: 40f, driven: true);
+            var ankleL = Bend(footL, lLegL, new Vector3(Fwd(-0.15f), 0.11f, 0f), fight: 60f, depth: 18f, driven: true);
+            var hipR = Bend(uLegR, pelvis, new Vector3(Fwd(0.035f), 0.97f, 0f), fight: 140f, depth: 50f, driven: true);
             var kneeR = Bend(lLegR, uLegR, new Vector3(Fwd(0.11f), 0.54f, 0f), fight: 150f, depth: 0f, driven: true);
-            var ankleR = Bend(footR, lLegR, new Vector3(Fwd(0.15f), 0.11f, 0f), fight: 60f, depth: 12f, driven: true);
+            var ankleR = Bend(footR, lLegR, new Vector3(Fwd(0.15f), 0.11f, 0f), fight: 60f, depth: 18f, driven: true);
 
             // ---- rail: each foot slides a little on X; everything else locked flat ----
             var railL = RailJoint(footL, new Vector3(Fwd(-StanceHalf), footL.position.y, 0f));
@@ -137,8 +133,8 @@ namespace PuppetMaster.Editor
             plane.angularXMotion = ConfigurableJointMotion.Limited; // depth lean
             plane.angularYMotion = ConfigurableJointMotion.Locked;  // NO yaw
             plane.angularZMotion = ConfigurableJointMotion.Limited; // fwd/back lean
-            plane.lowAngularXLimit = new SoftJointLimit { limit = -45f };
-            plane.highAngularXLimit = new SoftJointLimit { limit = 45f };
+            plane.lowAngularXLimit = new SoftJointLimit { limit = -55f };
+            plane.highAngularXLimit = new SoftJointLimit { limit = 55f };
             plane.angularZLimit = new SoftJointLimit { limit = 78f };
             plane.rotationDriveMode = RotationDriveMode.Slerp;
             plane.slerpDrive = new JointDrive { positionSpring = 0f, positionDamper = 0f, maximumForce = 0f };
@@ -151,13 +147,10 @@ namespace PuppetMaster.Editor
             var rigging = new GameObject("Rigging").transform;
             RailSlotGuide("Slot_L", Fwd(-StanceHalf), rigging, mSlot);
             RailSlotGuide("Slot_R", Fwd(StanceHalf), rigging, mSlot);
-            var railSlotL = Marker("RailSlot_L", new Vector3(Fwd(-StanceHalf), 0.02f, 0f), rigging);
-            var railSlotR = Marker("RailSlot_R", new Vector3(Fwd(StanceHalf), 0.02f, 0f), rigging);
-            // "below" is really "out toward the viewer, at floor level" — the ground
-            // is opaque, so the rope reads as coming out from under the rail toward
-            // the player rather than literally dropping through the floor.
-            var belowL = Marker("BelowRail_L", new Vector3(Fwd(-StanceHalf) - 0.05f, -0.02f, -0.95f), rigging);
-            var belowR = Marker("BelowRail_R", new Vector3(Fwd(StanceHalf) + 0.05f, -0.02f, -0.95f), rigging);
+            var railSlotL = Marker("RailSlot_L", new Vector3(Fwd(-StanceHalf), 0.05f, 0f), rigging);
+            var railSlotR = Marker("RailSlot_R", new Vector3(Fwd(StanceHalf), 0.05f, 0f), rigging);
+            var belowL = Marker("BelowRail_L", new Vector3(Fwd(-StanceHalf - 0.05f), -0.02f, -0.95f), rigging);
+            var belowR = Marker("BelowRail_R", new Vector3(Fwd(StanceHalf + 0.05f), -0.02f, -0.95f), rigging);
             var forceL = Marker("ForceAnchor_L", new Vector3(Fwd(-StanceHalf), -0.30f, 0f), rigging);
             var forceR = Marker("ForceAnchor_R", new Vector3(Fwd(StanceHalf), -0.30f, 0f), rigging);
             var attachL = RopeAttach(footL, "RopeAttach_L");
@@ -255,9 +248,40 @@ namespace PuppetMaster.Editor
             var r = GameObject.CreatePrimitive(PrimitiveType.Cube);
             r.name = "Rail";
             Object.DestroyImmediate(r.GetComponent<BoxCollider>());
-            r.transform.position = new Vector3(originX, 0f, 0f);
-            r.transform.localScale = new Vector3(1.15f, 0.06f, 0.42f);
+            r.transform.position = new Vector3(originX, 0.025f, 0f);
+            r.transform.localScale = new Vector3(1.20f, 0.05f, 0.24f);
             r.GetComponent<MeshRenderer>().sharedMaterial = rail;
+        }
+
+        static (Rigidbody uArm, Rigidbody lArm, Rigidbody hand, ConfigurableJoint elbow) BuildArm(
+            string suffix, float shoulderZ, Material mArm, Material mForearm, Material mHand,
+            Transform parent, float facing, float originX)
+        {
+            float Fwd(float d) => originX + facing * d;
+
+            Vector3 uArmPos = new Vector3(Fwd(0.01f), 1.34f, shoulderZ);
+            Vector3 elbowPos = new Vector3(Fwd(0.03f), 1.18f, shoulderZ);
+            Vector3 lArmPos = new Vector3(Fwd(0.10f), 1.06f, shoulderZ);
+            Vector3 wristPos = new Vector3(Fwd(0.17f), 0.95f, shoulderZ);
+            Vector3 handPos = new Vector3(Fwd(0.20f), 0.92f, shoulderZ);
+
+            var uArm = Part($"UpperArm_{suffix}", PrimitiveType.Capsule, uArmPos, new Vector3(0.09f, 0.14f, 0.09f), 2.0f, mArm, parent, 1.8f);
+
+            var elbowSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            elbowSphere.name = $"Elbow_{suffix}_Mesh";
+            Object.DestroyImmediate(elbowSphere.GetComponent<Collider>());
+            elbowSphere.transform.SetParent(uArm.transform, worldPositionStays: true);
+            elbowSphere.transform.position = elbowPos;
+            elbowSphere.transform.localScale = new Vector3(0.095f, 0.095f, 0.095f);
+            elbowSphere.GetComponent<MeshRenderer>().sharedMaterial = mArm;
+
+            var lArm = Part($"LowerArm_{suffix}", PrimitiveType.Capsule, lArmPos, new Vector3(0.08f, 0.13f, 0.08f), 1.5f, mForearm, parent, 2.0f);
+            var hand = Part($"Hand_{suffix}", PrimitiveType.Cube, handPos, new Vector3(0.08f, 0.07f, 0.08f), 0.8f, mHand, parent, 2.5f);
+
+            var elbow = Bend(lArm, uArm, elbowPos, fight: 120f, depth: 35f, driven: false, passiveSpring: 35f);
+            var wrist = Bend(hand, lArm, wristPos, fight: 60f, depth: 25f, driven: false, passiveSpring: 40f);
+
+            return (uArm, lArm, hand, elbow);
         }
 
         static Rigidbody Part(string name, PrimitiveType prim, Vector3 pos, Vector3 size,
@@ -383,8 +407,8 @@ namespace PuppetMaster.Editor
             go.name = name;
             Object.DestroyImmediate(go.GetComponent<Collider>());
             go.transform.SetParent(parent, worldPositionStays: true);
-            go.transform.position = new Vector3(x, 0.015f, 0f);
-            go.transform.localScale = new Vector3(0.05f, 0.16f, 0.24f);
+            go.transform.position = new Vector3(x, 0.048f, 0f);
+            go.transform.localScale = new Vector3(0.06f, 0.012f, 0.18f);
             go.GetComponent<MeshRenderer>().sharedMaterial = mat;
         }
 

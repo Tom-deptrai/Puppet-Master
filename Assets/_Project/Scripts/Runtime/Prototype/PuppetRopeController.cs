@@ -33,7 +33,7 @@ namespace PuppetMaster.Prototype
         public float hipSquatDeg = 62f;
         public float kneeSquatDeg = -118f;
         public float ankleSquatDeg = 55f;
-        public float legSlackSpring = 2600f;
+        public float legSlackSpring = 900f;
         public float legStandSpring = 7200f;
         public float legDamper = 340f;
         public float legMaxForce = 46000f;
@@ -45,25 +45,25 @@ namespace PuppetMaster.Prototype
         public float forwardBackGain = 44f;
         [Tooltip("Extra multiplier on the BACKWARD half so it matches forward amplitude.")]
         public float backwardBoost = 1.06f;
-        [Range(0f, 0.8f)] public float spineFollow = 0.32f;
-        [Range(0f, 0.8f)] public float neckFollow = 0.20f;
+        [Range(0f, 0.8f)] public float spineFollow = 0.38f;
+        [Range(0f, 0.8f)] public float neckFollow = 0.26f;
         [Tooltip("Negate to swap which rope pulls forward (default: Right rope = forward).")]
         public float forwardBackSign = 1f;
 
         [Header("Inward / Outward lean — averaged HORIZONTAL input (depth axis)")]
         [Tooltip("Pelvis depth lean (deg) at full inward / outward input. + = OUTWARD (toward camera).")]
-        public float depthGain = 28f;
+        public float depthGain = 36f;
         [Tooltip("How much the legs follow the depth lean so the body stays one piece.")]
-        [Range(0f, 0.8f)] public float depthHipFollow = 0.35f;
+        [Range(0f, 0.8f)] public float depthHipFollow = 0.40f;
 
         [Header("Pelvis → world drive (carries the 2-axis lean)")]
-        public float pelvisSlackSpring = 5200f;
+        public float pelvisSlackSpring = 1200f;
         public float pelvisStandSpring = 10500f;
         public float pelvisDamper = 540f;
         public float pelvisMaxForce = 95000f;
 
         [Header("Spine + neck drive")]
-        public float spineSlackSpring = 4200f;
+        public float spineSlackSpring = 1500f;
         public float spineStandSpring = 7200f;
         public float spineDamper = 340f;
         public float spineMaxForce = 32000f;
@@ -189,10 +189,10 @@ namespace PuppetMaster.Prototype
             IgnoreLegChain(_rig.left);
             IgnoreLegChain(_rig.right);
 
-            var uL = FindPart("UpperArm_L"); var lL = FindPart("LowerArm_L");
-            var uR = FindPart("UpperArm_R"); var lR = FindPart("LowerArm_R");
-            Pair(_rig.torso, uL); Pair(uL, lL);
-            Pair(_rig.torso, uR); Pair(uR, lR);
+            var uL = FindPart("UpperArm_L"); var lL = FindPart("LowerArm_L"); var hL = FindPart("Hand_L");
+            var uR = FindPart("UpperArm_R"); var lR = FindPart("LowerArm_R"); var hR = FindPart("Hand_R");
+            Pair(_rig.torso, uL); Pair(uL, lL); Pair(lL, hL);
+            Pair(_rig.torso, uR); Pair(uR, lR); Pair(lR, hR);
         }
 
         void IgnoreLegChain(in PuppetRig.Leg leg)
@@ -248,12 +248,20 @@ namespace PuppetMaster.Prototype
             // ---- compose the 2-axis lean into one world rotation ----
             //   forward/back = rotation about world Z (the puppet's left-right axis)
             //   depth        = rotation about world X (the puppet's forward axis)
-            //   Composed as Quaternion.Euler(-depthDeg, 0f, -_facingSign * fbDeg)
-            //   (equivalent to depthRot * fbRot). This guarantees strictly 0 yaw (Y rotation = 0),
-            //   preventing any conflict with the hard-locked angularY joint constraints.
-            float fbRaw = (r - l) * forwardBackGain * forwardBackSign;   // + = forward (toward opponent)
-            float fbDeg = fbRaw < 0f ? fbRaw * backwardBoost : fbRaw;
-            float depthDeg = DepthValue * depthGain;                     // + = outward (toward camera, -Z)
+            //
+            // Dynamic Collapse:
+            //   When tension is active, target is commanded directly by rope tension difference.
+            //   When tension is released (combined -> 0), target smoothly follows the puppet's current
+            //   physical lean angle instead of forcing it to vertical 0°, letting gravity, inertia,
+            //   and natural body weight collapse the puppet in the direction of its current motion.
+            float fbCmd = (r - l) * forwardBackGain * forwardBackSign;
+            float fbRaw = fbCmd < 0f ? fbCmd * backwardBoost : fbCmd;
+
+            float currentFb = ForwardLeanDeg;
+            float activeBlend = Mathf.Clamp01(Mathf.Max(combined, Mathf.Abs(r - l) * 0.8f) * 1.6f);
+            float fbDeg = Mathf.Lerp(currentFb, fbRaw, activeBlend);
+
+            float depthDeg = DepthValue * depthGain;
 
             Quaternion leanWorld = Quaternion.Euler(-depthDeg, 0f, -_facingSign * fbDeg);
 
@@ -268,11 +276,11 @@ namespace PuppetMaster.Prototype
             SetDrive(_rig.neck, Mathf.Lerp(spineSlackSpring * 0.4f, spineStandSpring * 0.35f, combined), spineDamper, spineMaxForce * 0.4f);
             SetTargetWorld(_rig.neck, Quaternion.Slerp(Quaternion.identity, leanWorld, neckFollow));
 
-            // ---- legs: squat (fight plane) + a little depth follow so the body stays one piece ----
+            // ---- legs: squat (fight plane) + depth follow so the body stays one piece ----
             DriveLeg(_rig.left, squatL, depthDeg, combined);
             DriveLeg(_rig.right, squatR, depthDeg, combined);
 
-            TorsoAssist(leanWorld);
+            TorsoAssist(leanWorld, combined);
 
             RopePull(_rig.left, l);
             RopePull(_rig.right, r);
@@ -301,13 +309,14 @@ namespace PuppetMaster.Prototype
             SetTargetWorld(j, targetRelative);
         }
 
-        void TorsoAssist(Quaternion leanWorld)
+        void TorsoAssist(Quaternion leanWorld, float combined)
         {
             var body = _rig.torso;
             if (body == null) return;
             Vector3 desiredUp = leanWorld * Vector3.up;
             Vector3 err = Vector3.Cross(body.transform.up, desiredUp);
-            Vector3 torque = err * torsoUprightAssist - body.angularVelocity * torsoUprightDamping;
+            float assistScale = Mathf.Lerp(0.15f, 1f, combined);
+            Vector3 torque = err * (torsoUprightAssist * assistScale) - body.angularVelocity * torsoUprightDamping;
             body.AddTorque(Vector3.ClampMagnitude(torque, maxAssistTorque), ForceMode.Acceleration);
         }
 
