@@ -96,9 +96,9 @@ namespace PuppetMaster.Editor
             face.transform.localScale = new Vector3(0.06f, 0.09f, 0.13f);
             face.GetComponent<MeshRenderer>().sharedMaterial = mFace;
 
-            // ---- arms: exactly 2 arms total in a realistic guard pose ----
-            var (uArmL, lArmL, handL, elbowL, wristL) = BuildArm("L", ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
-            var (uArmR, lArmR, handR, elbowR, wristR) = BuildArm("R", -ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
+            // ---- arms: exactly 2 arms total, one continuous bone chain per side ----
+            var (uArmL, lArmL, handL, shoulderL, elbowL, wristL) = BuildArm("L", ShoulderZ, mLimb, mLimb, mFoot, puppet, torso, facing, originX);
+            var (uArmR, lArmR, handR, shoulderR, elbowR, wristR) = BuildArm("R", -ShoulderZ, mLimb, mLimb, mFoot, puppet, torso, facing, originX);
             var sword = BuildSword(handR, puppet, facing, originX, mBlade, mHilt, mGuard);
 
             // ---- legs: fore/aft on the rail, exact fore↔aft mirror.
@@ -116,9 +116,6 @@ namespace PuppetMaster.Editor
             //      angZ = fight plane (fwd/back + squat), angX = depth, angY = yaw(LOCKED). ----
             var spine = Bend(torso, pelvis, new Vector3(Fwd(0f), 1.17f, 0f), fight: 75f, depth: 55f, driven: true);
             var neck = Bend(head, torso, new Vector3(Fwd(0f), 1.64f, 0f), fight: 55f, depth: 55f, driven: true);
-
-            var shoulderL = BendShoulder(uArmL, torso, new Vector3(Fwd(0.02f), 1.46f, ShoulderZ), 75f, 45f, 40f, 350f, 40f);
-            var shoulderR = BendShoulder(uArmR, torso, new Vector3(Fwd(0.02f), 1.46f, -ShoulderZ), 85f, 55f, 60f, 750f, 65f);
 
             var hipL = Bend(uLegL, pelvis, new Vector3(Fwd(-0.035f), 0.97f, 0f), fight: 140f, depth: 55f, driven: true);
             var kneeL = Bend(lLegL, uLegL, new Vector3(Fwd(-0.11f), 0.54f, 0f), fight: 150f, depth: 15f, driven: true);
@@ -289,63 +286,139 @@ namespace PuppetMaster.Editor
             gr.GetComponent<MeshRenderer>().sharedMaterial = groove;
         }
 
-        static (Rigidbody uArm, Rigidbody lArm, Rigidbody hand, ConfigurableJoint elbow, ConfigurableJoint wrist) BuildArm(
+        /// <summary>
+        /// Builds ONE anatomically continuous arm:
+        ///   Shoulder(socket) -> UpperArm -> Elbow -> Forearm -> Wrist -> Hand.
+        ///
+        /// Every segment is an oriented capsule that spans EXACTLY from one joint
+        /// point to the next (no gaps, no floating joint balls, no fake mid-bone).
+        /// The Rigidbody transforms stay at identity rotation so the driven joints
+        /// keep an identity joint space (axis (1,0,0) == world), exactly like the
+        /// legs and spine — only the visual/collider child is rotated onto the bone.
+        ///
+        /// Neutral pose: upper arm hangs down and slightly forward toward the
+        /// opponent, elbow bent only 15-18 deg so upper arm and forearm read as
+        /// nearly one line, hand carried in front of the body (not against it).
+        /// </summary>
+        static (Rigidbody uArm, Rigidbody lArm, Rigidbody hand, ConfigurableJoint shoulder, ConfigurableJoint elbow, ConfigurableJoint wrist) BuildArm(
             string suffix, float shoulderZ, Material mArm, Material mForearm, Material mHand,
-            Transform parent, float facing, float originX)
+            Transform parent, Rigidbody torso, float facing, float originX)
         {
             float Fwd(float d) => originX + facing * d;
             bool isRight = suffix == "R";
 
-            Vector3 uArmPos;
-            Vector3 elbowPos;
-            Vector3 lArmPos;
-            Vector3 wristPos;
-            Vector3 handPos;
+            // Arm plane sits on the torso side (torso half-width 0.17), coplanar in Z
+            // so the forearm never kinks inward toward the chest.
+            float z = Mathf.Sign(shoulderZ) * 0.17f;
 
-            if (isRight)
-            {
-                // Right arm: Holds sword forward in front of body.
-                // Shoulder is at shoulderZ (-0.25m), flared outside torso box.
-                // Upper arm, elbow, forearm, and hand form a nearly straight, gently curved line.
-                // No sharp acute bend at elbow.
-                uArmPos = new Vector3(Fwd(0.12f), 1.36f, shoulderZ * 0.98f);
-                elbowPos = new Vector3(Fwd(0.22f), 1.26f, shoulderZ * 0.95f);
-                lArmPos = new Vector3(Fwd(0.32f), 1.18f, shoulderZ * 0.91f);
-                wristPos = new Vector3(Fwd(0.42f), 1.10f, shoulderZ * 0.86f);
-                handPos = new Vector3(Fwd(0.46f), 1.07f, shoulderZ * 0.84f);
-            }
-            else
-            {
-                // Left arm: Natural guard/balance pose.
-                // Co-linear forward-downward natural extension with subtle gentle curve.
-                uArmPos = new Vector3(Fwd(0.10f), 1.37f, shoulderZ * 0.98f);
-                elbowPos = new Vector3(Fwd(0.19f), 1.28f, shoulderZ * 0.95f);
-                lArmPos = new Vector3(Fwd(0.28f), 1.21f, shoulderZ * 0.91f);
-                wristPos = new Vector3(Fwd(0.36f), 1.15f, shoulderZ * 0.86f);
-                handPos = new Vector3(Fwd(0.40f), 1.12f, shoulderZ * 0.84f);
-            }
+            // Shoulder socket: just inside the top of the torso box.
+            Vector3 shoulderPt = new Vector3(Fwd(0f), 1.46f, z);
 
-            var uArm = Part($"UpperArm_{suffix}", PrimitiveType.Capsule, uArmPos, new Vector3(0.075f, 0.12f, 0.075f), 1.8f, mArm, parent, 1.8f);
+            const float upperLen = 0.30f;
+            const float foreLen = 0.26f;
+            const float handLen = 0.055f;
+            const float armRadius = 0.050f;
+            const float foreRadius = 0.044f;
 
-            var elbowSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            elbowSphere.name = $"Elbow_{suffix}_Mesh";
-            Object.DestroyImmediate(elbowSphere.GetComponent<Collider>());
-            elbowSphere.transform.SetParent(uArm.transform, worldPositionStays: true);
-            elbowSphere.transform.position = elbowPos;
-            elbowSphere.transform.localScale = new Vector3(0.08f, 0.08f, 0.08f);
-            elbowSphere.GetComponent<MeshRenderer>().sharedMaterial = mArm;
+            // Angles measured from straight-down. Right arm presents the sword a
+            // little further forward; both keep the elbow only slightly bent.
+            float upperFromDown = isRight ? 42f : 40f;
+            float elbowBendDeg = isRight ? 30f : 28f;
+            float foreFromDown = upperFromDown + elbowBendDeg;
 
-            var lArm = Part($"LowerArm_{suffix}", PrimitiveType.Capsule, lArmPos, new Vector3(0.065f, 0.11f, 0.065f), 1.4f, mForearm, parent, 2.0f);
-            var hand = Part($"Hand_{suffix}", PrimitiveType.Cube, handPos, new Vector3(0.07f, 0.07f, 0.07f), 0.6f, mHand, parent, 2.5f);
+            Vector3 Dir(float degFromDown) => new Vector3(
+                facing * Mathf.Sin(degFromDown * Mathf.Deg2Rad),
+                -Mathf.Cos(degFromDown * Mathf.Deg2Rad),
+                0f);
 
-            // Elbow: Hinge in sagittal/fight plane. Allows forward guard extension/flexion.
-            // Limited to -8..45 deg so elbow never folds acutely into an unnatural angle.
-            var elbow = BendElbow(lArm, uArm, elbowPos, lowFight: -8f, highFight: 45f, depth: 18f, spring: isRight ? 800f : 350f);
+            Vector3 upperDir = Dir(upperFromDown);
+            Vector3 foreDir = Dir(foreFromDown);
+            Vector3 elbowPt = shoulderPt + upperDir * upperLen;
+            Vector3 wristPt = elbowPt + foreDir * foreLen;
+            Vector3 handPt = wristPt + foreDir * handLen;
 
-            // Wrist: Keeps hand firmly aligned with the forearm in guard
-            var wrist = Bend(hand, lArm, wristPos, fight: 25f, depth: 20f, driven: false, passiveSpring: isRight ? 650f : 260f);
+            var uArm = BoneSegment($"UpperArm_{suffix}", shoulderPt, elbowPt, armRadius, 1.8f, mArm, parent, 1.8f);
+            var lArm = BoneSegment($"LowerArm_{suffix}", elbowPt, wristPt, foreRadius, 1.4f, mForearm, parent, 2.0f);
+            var hand = Part($"Hand_{suffix}", PrimitiveType.Cube, handPt, new Vector3(0.07f, 0.07f, 0.07f), 0.6f, mHand, parent, 2.5f);
 
-            return (uArm, lArm, hand, elbow, wrist);
+            // Rounded joint caps — glued to the body that OWNS that end of the joint
+            // so they can never separate into a floating ball.
+            JointCap("Deltoid", torso.transform, shoulderPt, armRadius * 2.3f, mArm);
+            JointCap($"Elbow_{suffix}", lArm.transform, elbowPt, foreRadius * 2.1f, mArm);
+
+            // Shoulder: 3-axis slerp-driven socket (fight plane + depth + limited yaw).
+            var shoulder = BendShoulder(uArm, torso, shoulderPt,
+                fightAngle: isRight ? 85f : 75f,
+                depthAngle: isRight ? 55f : 45f,
+                yawAngle: isRight ? 60f : 40f,
+                spring: isRight ? 750f : 350f,
+                damper: isRight ? 65f : 40f);
+
+            // Elbow: hinge in the fight plane, near-straight neutral, can never fold acutely.
+            var elbow = BendElbow(lArm, uArm, elbowPt, lowFight: -6f, highFight: 45f, depth: 16f, spring: isRight ? 1800f : 1300f);
+
+            // Wrist: passive, keeps the hand aligned with the forearm.
+            var wrist = Bend(hand, lArm, wristPt, fight: 25f, depth: 20f, driven: false, passiveSpring: isRight ? 650f : 260f);
+
+            return (uArm, lArm, hand, shoulder, elbow, wrist);
+        }
+
+        /// <summary>
+        /// One bone: a Rigidbody at the segment midpoint (identity rotation, so the
+        /// joint space stays world-aligned) whose capsule mesh AND capsule collider
+        /// are rotated onto the line a->b and scaled to span it exactly.
+        /// </summary>
+        static Rigidbody BoneSegment(string name, Vector3 a, Vector3 b, float radius,
+            float mass, Material mat, Transform parent, float angularDamping)
+        {
+            Vector3 mid = (a + b) * 0.5f;
+            Vector3 delta = b - a;
+            float len = delta.magnitude;
+            Quaternion align = len > 1e-5f
+                ? Quaternion.FromToRotation(Vector3.up, delta / len)
+                : Quaternion.identity;
+
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, worldPositionStays: true);
+            go.transform.SetPositionAndRotation(mid, Quaternion.identity);
+
+            var mesh = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            mesh.name = "Mesh";
+            Object.DestroyImmediate(mesh.GetComponent<Collider>());
+            mesh.transform.SetParent(go.transform, worldPositionStays: false);
+            mesh.transform.localRotation = align;
+            mesh.transform.localScale = new Vector3(radius * 2f, len * 0.5f + radius, radius * 2f);
+            mesh.GetComponent<MeshRenderer>().sharedMaterial = mat;
+
+            var col = new GameObject("Col");
+            col.transform.SetParent(go.transform, worldPositionStays: false);
+            col.transform.localRotation = align;
+            var cc = col.AddComponent<CapsuleCollider>();
+            cc.direction = 1; // local Y == bone axis
+            cc.radius = radius;
+            cc.height = len + radius * 2f;
+
+            var rb = go.AddComponent<Rigidbody>();
+            rb.mass = mass;
+            rb.linearDamping = 0.05f;
+            rb.angularDamping = angularDamping;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+            rb.maxAngularVelocity = 28f;
+            rb.solverIterations = 48;
+            rb.solverVelocityIterations = 24;
+            return rb;
+        }
+
+        static void JointCap(string name, Transform glueTo, Vector3 worldPos, float diameter, Material mat)
+        {
+            var s = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            s.name = name + "_Mesh";
+            Object.DestroyImmediate(s.GetComponent<Collider>());
+            s.transform.SetParent(glueTo, worldPositionStays: true);
+            s.transform.position = worldPos;
+            s.transform.localScale = Vector3.one * diameter;
+            s.GetComponent<MeshRenderer>().sharedMaterial = mat;
         }
 
         static Rigidbody BuildSword(

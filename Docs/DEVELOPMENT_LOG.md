@@ -8,6 +8,63 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Rebuild puppet arm rig for natural anatomy
+
+### Nguyên nhân thật sự khiến arm rig nhìn sai
+`BuildArm` cũ tạo `UpperArm` / `LowerArm` / `Hand` như các part rời, mỗi part đặt
+bằng toạ độ world riêng và **luôn ở rotation = identity**. Capsule identity trong
+Unity nằm **thẳng đứng theo Y**, trong khi đường cánh tay lại chạy chéo xuống–ra
+trước. Hệ quả:
+- Capsule UpperArm (0.24 m) không thể nối điểm shoulder và điểm elbow cách nhau
+  ~0.28 m theo phương chéo → hở rõ giữa vai và upper arm.
+- Forearm là capsule đứng riêng, lệch ra trước upper arm → "gập góc bất thường".
+- `Elbow_Mesh` là sphere gắn cứng vào upper arm ở một điểm world mà upper arm
+  không thật sự chạm tới → nhìn như quả cầu nổi giữa không trung.
+- Chuỗi toạ độ còn taper dần theo Z (`shoulderZ*0.98 → *0.84`) làm forearm quặp
+  vào trong về phía ngực.
+Tóm lại: rig không sai spring hay elbow angle — nó sai **hình học gốc**: segment
+không được orient theo xương, độ dài không bằng khoảng cách khớp, anchor không
+nằm ở đầu xương.
+
+### Phần đã rebuild
+- `PuppetPrototypeBuilder.BuildArm` viết lại hoàn toàn:
+  - Chuỗi giải phẫu 1 mạch: `shoulderPt → elbowPt → wristPt → handPt`, tất cả
+    **đồng phẳng theo Z** (z = ±0.17 = cạnh torso, hết quặp vào trong).
+  - Góc dựng từ phương thẳng đứng: upper arm 42° (R) / 40° (L) hướng xuống–ra
+    trước; elbow bend build 30° (R) / 28° (L).
+  - Mỗi xương = `BoneSegment` mới: Rigidbody đặt tại **trung điểm xương, rotation
+    identity** (giữ joint-space = world như chân/spine), còn **mesh capsule VÀ
+    CapsuleCollider (child riêng) được xoay đúng theo trục xương** và scale đúng
+    bằng khoảng cách 2 khớp → segment phủ khít shoulder→elbow→wrist, không hở.
+  - Bỏ elbow sphere nổi. Thay bằng `JointCap`: "Deltoid" dán vào **torso** phủ
+    ổ vai, "Elbow" dán vào **forearm** ngay điểm khớp → không bao giờ tách rời.
+  - `BendShoulder` chuyển vào trong `BuildArm` (trả về qua tuple), anchor đúng
+    tại `shoulderPt`.
+  - `BendElbow`: hinge mặt phẳng đánh, limit `-6°..45°` (không gập nhọn được),
+    spring 1800 (R) / 1300 (L), giữ compliance depth 16°.
+  - Wrist joint anchor tại `wristPt`; sword grip vẫn tại tâm `Hand_R`
+    (`BuildSword` không đổi ngoài việc bám theo vị trí hand mới).
+- Không đụng: rope control, foot/rail, forward/back & in/out lean, responsiveness,
+  camera, sword physics (chỉ điểm bám vào tay).
+
+### Elbow neutral angle
+- Build pose: 30° (R) / 28° (L).
+- Sau khi ổn định dưới trọng lực + kiếm ở neutral: ~8° (L), ~1–5° (R — do
+  `PuppetRopeController.DriveSwordArm` giữ elbow phải bằng `armRelaxedSpring`).
+  Cả hai đọc là "upper arm và forearm gần thẳng hàng, cong nhẹ tự nhiên" — đúng
+  yêu cầu.
+
+### Kiểm thử Play Mode (debugOverrideInput để dựng đứng)
+- Mỗi bên đúng 1 arm; `Shoulder → UpperArm → Elbow → Forearm → Hand` nối liền
+  mạch, không joint nổi.
+- Kiếm nằm đúng trong `Hand_R` (khoảng cách grip–hand ~0.006 m).
+- Lean in/out (Q/E) + thrust/retract mạnh (J/K, vel ±8): cánh tay giữ cấu trúc,
+  kiếm có quán tính, không bay khỏi tay, **không joint explosion**, không lỗi
+  console. Về neutral thì phục hồi đúng pose ban đầu.
+- Đã xác nhận mirror trên `PlayerSide.Right`.
+
+---
+
 ## 2026-09-04 — Refine arm posture and increase puppet responsiveness
 
 Chỉnh sửa hình dáng cánh tay tự nhiên và tăng tốc độ phản ứng của toàn bộ puppet ~1.5x:
