@@ -103,18 +103,18 @@ namespace PuppetMaster.Editor
 
             // ---- joints. axis=(1,0,0), secondary=(0,1,0):
             //      angZ = fight plane (fwd/back + squat), angX = depth, angY = yaw(LOCKED). ----
-            var spine = Bend(torso, pelvis, new Vector3(Fwd(0f), 1.17f, 0f), fight: 75f, depth: 42f, driven: true);
-            var neck = Bend(head, torso, new Vector3(Fwd(0f), 1.64f, 0f), fight: 55f, depth: 42f, driven: true);
+            var spine = Bend(torso, pelvis, new Vector3(Fwd(0f), 1.17f, 0f), fight: 75f, depth: 45f, driven: true);
+            var neck = Bend(head, torso, new Vector3(Fwd(0f), 1.64f, 0f), fight: 55f, depth: 45f, driven: true);
 
             var shoulderL = Bend(uArmL, torso, new Vector3(Fwd(0f), 1.49f, ShoulderZ), fight: 120f, depth: 70f, driven: false, passiveSpring: 40f);
             var elbowL = Bend(lArmL, uArmL, new Vector3(Fwd(0.03f), 1.25f, ShoulderZ), fight: 130f, depth: 25f, driven: false, passiveSpring: 30f);
             var shoulderR = Bend(uArmR, torso, new Vector3(Fwd(0f), 1.49f, -ShoulderZ), fight: 120f, depth: 70f, driven: false, passiveSpring: 40f);
             var elbowR = Bend(lArmR, uArmR, new Vector3(Fwd(0.03f), 1.25f, -ShoulderZ), fight: 130f, depth: 25f, driven: false, passiveSpring: 30f);
 
-            var hipL = Bend(uLegL, pelvis, new Vector3(Fwd(-0.035f), 0.97f, 0f), fight: 140f, depth: 36f, driven: true);
+            var hipL = Bend(uLegL, pelvis, new Vector3(Fwd(-0.035f), 0.97f, 0f), fight: 140f, depth: 40f, driven: true);
             var kneeL = Bend(lLegL, uLegL, new Vector3(Fwd(-0.11f), 0.54f, 0f), fight: 150f, depth: 0f, driven: true);
             var ankleL = Bend(footL, lLegL, new Vector3(Fwd(-0.15f), 0.11f, 0f), fight: 60f, depth: 12f, driven: true);
-            var hipR = Bend(uLegR, pelvis, new Vector3(Fwd(0.035f), 0.97f, 0f), fight: 140f, depth: 36f, driven: true);
+            var hipR = Bend(uLegR, pelvis, new Vector3(Fwd(0.035f), 0.97f, 0f), fight: 140f, depth: 40f, driven: true);
             var kneeR = Bend(lLegR, uLegR, new Vector3(Fwd(0.11f), 0.54f, 0f), fight: 150f, depth: 0f, driven: true);
             var ankleR = Bend(footR, lLegR, new Vector3(Fwd(0.15f), 0.11f, 0f), fight: 60f, depth: 12f, driven: true);
 
@@ -137,8 +137,8 @@ namespace PuppetMaster.Editor
             plane.angularXMotion = ConfigurableJointMotion.Limited; // depth lean
             plane.angularYMotion = ConfigurableJointMotion.Locked;  // NO yaw
             plane.angularZMotion = ConfigurableJointMotion.Limited; // fwd/back lean
-            plane.lowAngularXLimit = new SoftJointLimit { limit = -40f };
-            plane.highAngularXLimit = new SoftJointLimit { limit = 40f };
+            plane.lowAngularXLimit = new SoftJointLimit { limit = -45f };
+            plane.highAngularXLimit = new SoftJointLimit { limit = 45f };
             plane.angularZLimit = new SoftJointLimit { limit = 78f };
             plane.rotationDriveMode = RotationDriveMode.Slerp;
             plane.slerpDrive = new JointDrive { positionSpring = 0f, positionDamper = 0f, maximumForce = 0f };

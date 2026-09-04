@@ -45,16 +45,16 @@ namespace PuppetMaster.Prototype
         public float forwardBackGain = 44f;
         [Tooltip("Extra multiplier on the BACKWARD half so it matches forward amplitude.")]
         public float backwardBoost = 1.06f;
-        [Range(0f, 0.8f)] public float spineFollow = 0.26f;
-        [Range(0f, 0.8f)] public float neckFollow = 0.15f;
+        [Range(0f, 0.8f)] public float spineFollow = 0.32f;
+        [Range(0f, 0.8f)] public float neckFollow = 0.20f;
         [Tooltip("Negate to swap which rope pulls forward (default: Right rope = forward).")]
         public float forwardBackSign = 1f;
 
         [Header("Inward / Outward lean — averaged HORIZONTAL input (depth axis)")]
         [Tooltip("Pelvis depth lean (deg) at full inward / outward input. + = OUTWARD (toward camera).")]
-        public float depthGain = 22f;
+        public float depthGain = 28f;
         [Tooltip("How much the legs follow the depth lean so the body stays one piece.")]
-        [Range(0f, 0.8f)] public float depthHipFollow = 0.32f;
+        [Range(0f, 0.8f)] public float depthHipFollow = 0.35f;
 
         [Header("Pelvis → world drive (carries the 2-axis lean)")]
         public float pelvisSlackSpring = 5200f;
@@ -248,15 +248,14 @@ namespace PuppetMaster.Prototype
             // ---- compose the 2-axis lean into one world rotation ----
             //   forward/back = rotation about world Z (the puppet's left-right axis)
             //   depth        = rotation about world X (the puppet's forward axis)
-            //   depth is applied FIRST, then forward/back, so neither squashes the
-            //   other and there is never a rotation about world Y (no yaw).
+            //   Composed as Quaternion.Euler(-depthDeg, 0f, -_facingSign * fbDeg)
+            //   (equivalent to depthRot * fbRot). This guarantees strictly 0 yaw (Y rotation = 0),
+            //   preventing any conflict with the hard-locked angularY joint constraints.
             float fbRaw = (r - l) * forwardBackGain * forwardBackSign;   // + = forward (toward opponent)
             float fbDeg = fbRaw < 0f ? fbRaw * backwardBoost : fbRaw;
             float depthDeg = DepthValue * depthGain;                     // + = outward (toward camera, -Z)
 
-            Quaternion fbRot = Quaternion.AngleAxis(-_facingSign * fbDeg, Vector3.forward);
-            Quaternion depthRot = Quaternion.AngleAxis(-depthDeg, Vector3.right);
-            Quaternion leanWorld = fbRot * depthRot;
+            Quaternion leanWorld = Quaternion.Euler(-depthDeg, 0f, -_facingSign * fbDeg);
 
             // ---- pelvis: full lean, anchored to the world ----
             SetDrive(_rig.pelvisPlaneJoint,
@@ -286,15 +285,13 @@ namespace PuppetMaster.Prototype
         {
             float spring = Mathf.Lerp(legSlackSpring, legStandSpring, combined);
 
-            Quaternion depthHip = Quaternion.AngleAxis(-depthDeg * depthHipFollow, Vector3.right);
-            Quaternion depthLower = Quaternion.AngleAxis(-depthDeg * depthHipFollow * 0.4f, Vector3.right);
+            Quaternion hipRot = Quaternion.Euler(-depthDeg * depthHipFollow, 0f, squat * hipSquatDeg);
+            Quaternion kneeRot = Quaternion.Euler(0f, 0f, squat * kneeSquatDeg);
+            Quaternion ankleRot = Quaternion.Euler(-depthDeg * depthHipFollow * 0.25f, 0f, squat * ankleSquatDeg);
 
-            DriveJoint(leg.hip,
-                Quaternion.AngleAxis(squat * hipSquatDeg, Vector3.forward) * depthHip, spring, legDamper, legMaxForce);
-            DriveJoint(leg.knee,
-                Quaternion.AngleAxis(squat * kneeSquatDeg, Vector3.forward) * depthLower, spring, legDamper, legMaxForce);
-            DriveJoint(leg.ankle,
-                Quaternion.AngleAxis(squat * ankleSquatDeg, Vector3.forward) * depthLower,
+            DriveJoint(leg.hip, hipRot, spring, legDamper, legMaxForce);
+            DriveJoint(leg.knee, kneeRot, spring, legDamper, legMaxForce);
+            DriveJoint(leg.ankle, ankleRot,
                 spring * ankleSpringScale, legDamper * ankleSpringScale, legMaxForce * ankleSpringScale);
         }
 

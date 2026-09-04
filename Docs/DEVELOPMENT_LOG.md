@@ -569,3 +569,23 @@ trong Unity (Preferences/Project Settings) hoặc chờ bản CLI ổn định h
   để phase "Puppet feels good".
 - Curl error tới `*.cloud.unity3d.com` trong log batch = telemetry/licensing offline,
   không ảnh hưởng project.
+
+---
+
+## 2026-09-04 — Fix inward / outward puppet lean
+
+### Vấn đề đã xử lý
+- **Nguyên nhân trước đây:**
+  1. Phép nhân quaternion `fbRot * depthRot` (`Rz * Rx`) trong `PuppetRopeController` sinh ra yaw góc Y ký sinh (~20°) khi kết hợp forward/back với depth. Do `angularYMotion = Locked` trên mọi joint, solver vật lý liên tục triệt tiêu và xung đột với drive, làm suy giảm chuyển động depth.
+  2. Tương tự trong `DriveLeg`, phép nhân `AngleAxis(squat, Z) * depthHip` sinh ra góc xoay Y ký sinh trên khớp háng (hip) vốn đã khoá Y.
+  3. Giới hạn góc và tỉ lệ follow của spine/neck/hip cho depth trước đó quá thấp (`depthGain = 22f`, `spineFollow = 0.26f`), khiến pelvis, torso và head không uốn đủ biên độ nhìn thấy rõ.
+
+### Thay đổi đã thực hiện
+- `PuppetRopeController.cs`:
+  - Đổi cách dựng `leanWorld` sang `Quaternion.Euler(-depthDeg, 0f, -_facingSign * fbDeg)` (tương đương `depthRot * fbRot` / `Rx * Rz`), đảm bảo góc yaw quanh trục Y luôn tuyệt đối = 0.00°, loại bỏ hoàn toàn xung đột với constraint `angularYMotion = Locked`.
+  - Nâng `depthGain = 28f`, `spineFollow = 0.32f`, `neckFollow = 0.20f`, `depthHipFollow = 0.35f`.
+  - Cập nhật `DriveLeg` dùng Euler góc thuần Z và X không chứa thành phần Y ký sinh.
+- `PuppetPrototypeBuilder.cs`:
+  - Nâng giới hạn góc depth (`angularXLimit`) trên `pelvisPlaneJoint`, `spine`, `neck` lên `±45°` và `hip` lên `±40°`.
+- **Phím test trên Mac:** `Q` = INWARD (nghiêng vào trong), `E` = OUTWARD (nghiêng ra ngoài), kết hợp với `A` (lùi), `L` (tiến), `Space` (căng cả 2 dây).
+- Đã test và xác nhận trong Play Mode qua Unity MCP: INWARD (~28°), OUTWARD (~28°), Forward (~67°), Backward (~64°), kết hợp diagonal đều hoạt động mượt mà, không yaw ký sinh, giữ chặt chân trên ray.
