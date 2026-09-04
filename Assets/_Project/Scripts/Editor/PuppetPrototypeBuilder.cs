@@ -38,7 +38,16 @@ namespace PuppetMaster.Editor
         const float ArenaOffset = 1.0f;
         const float StanceHalf = 0.16f;
         const float FootY = 0.085f;
+        const float FootHeight = 0.07f;
+        const float FootLength = 0.26f;
+        const float FootWidth = 0.13f;
         const float ShoulderZ = 0.19f;
+
+        const float RailHeight = 0.05f;
+        const float RailWidth = 0.15f;
+        const float RailLength = 1.50f;
+        const float RailTopY = FootY - FootHeight * 0.5f; // 0.050f
+        const float RailCenterY = RailTopY - RailHeight * 0.5f; // 0.025f
 
         [MenuItem("Puppet Master/Phase 1/Build Puppet Prototype — Left side")]
         public static void BuildLeft() => Build(PlayerSide.Left);
@@ -94,10 +103,10 @@ namespace PuppetMaster.Editor
             //      Left rope -> Foot_L (rear, this player's back) -> left thumb zone. ----
             var uLegL = Part("UpperLeg_L", PrimitiveType.Capsule, new Vector3(Fwd(-0.07f), 0.76f, 0f), new Vector3(0.12f, 0.22f, 0.12f), 6.5f, mLeg, puppet, 1.6f);
             var lLegL = Part("LowerLeg_L", PrimitiveType.Capsule, new Vector3(Fwd(-0.12f), 0.32f, 0f), new Vector3(0.11f, 0.21f, 0.11f), 4.5f, mLeg, puppet, 2.4f);
-            var footL = Part("Foot_L", PrimitiveType.Cube, new Vector3(Fwd(-StanceHalf), FootY, 0f), new Vector3(0.26f, 0.07f, 0.13f), 4.2f, mFoot, puppet, 3.0f);
+            var footL = Part("Foot_L", PrimitiveType.Cube, new Vector3(Fwd(-StanceHalf), FootY, 0f), new Vector3(FootLength, FootHeight, FootWidth), 4.2f, mFoot, puppet, 3.0f);
             var uLegR = Part("UpperLeg_R", PrimitiveType.Capsule, new Vector3(Fwd(0.07f), 0.76f, 0f), new Vector3(0.12f, 0.22f, 0.12f), 6.5f, mLeg, puppet, 1.6f);
             var lLegR = Part("LowerLeg_R", PrimitiveType.Capsule, new Vector3(Fwd(0.12f), 0.32f, 0f), new Vector3(0.11f, 0.21f, 0.11f), 4.5f, mLeg, puppet, 2.4f);
-            var footR = Part("Foot_R", PrimitiveType.Cube, new Vector3(Fwd(StanceHalf), FootY, 0f), new Vector3(0.26f, 0.07f, 0.13f), 4.2f, mFoot, puppet, 3.0f);
+            var footR = Part("Foot_R", PrimitiveType.Cube, new Vector3(Fwd(StanceHalf), FootY, 0f), new Vector3(FootLength, FootHeight, FootWidth), 4.2f, mFoot, puppet, 3.0f);
 
             // ---- joints. axis=(1,0,0), secondary=(0,1,0):
             //      angZ = fight plane (fwd/back + squat), angX = depth, angY = yaw(LOCKED). ----
@@ -115,8 +124,8 @@ namespace PuppetMaster.Editor
             var ankleR = Bend(footR, lLegR, new Vector3(Fwd(0.15f), 0.11f, 0f), fight: 60f, depth: 45f, driven: true);
 
             // ---- rail: each foot slides a little on X; everything else locked flat ----
-            var railL = RailJoint(footL, new Vector3(Fwd(-StanceHalf), footL.position.y, 0f));
-            var railR = RailJoint(footR, new Vector3(Fwd(StanceHalf), footR.position.y, 0f));
+            var railL = RailJoint(footL, new Vector3(Fwd(-StanceHalf), FootY, 0f));
+            var railR = RailJoint(footR, new Vector3(Fwd(StanceHalf), FootY, 0f));
 
             // ---- pelvis -> world: Z position allows depth arc swing,
             //      2-axis lean drive (fight plane + depth), yaw hard-locked. ----
@@ -151,10 +160,10 @@ namespace PuppetMaster.Editor
             var rigging = new GameObject("Rigging").transform;
             RailSlotGuide("Slot_L", Fwd(-StanceHalf), rigging, mSlot);
             RailSlotGuide("Slot_R", Fwd(StanceHalf), rigging, mSlot);
-            var railSlotL = Marker("RailSlot_L", new Vector3(Fwd(-StanceHalf), 0.05f, 0f), rigging);
-            var railSlotR = Marker("RailSlot_R", new Vector3(Fwd(StanceHalf), 0.05f, 0f), rigging);
-            var belowL = Marker("BelowRail_L", new Vector3(Fwd(-StanceHalf), -0.02f, -0.95f), rigging);
-            var belowR = Marker("BelowRail_R", new Vector3(Fwd(StanceHalf), -0.02f, -0.95f), rigging);
+            var railSlotL = Marker("RailSlot_L", new Vector3(Fwd(-StanceHalf), RailTopY, 0f), rigging);
+            var railSlotR = Marker("RailSlot_R", new Vector3(Fwd(StanceHalf), RailTopY, 0f), rigging);
+            var belowL = Marker("BelowRail_L", new Vector3(Fwd(-StanceHalf), -0.06f, 0f), rigging);
+            var belowR = Marker("BelowRail_R", new Vector3(Fwd(StanceHalf), -0.06f, 0f), rigging);
             var forceL = Marker("ForceAnchor_L", new Vector3(Fwd(-StanceHalf), -0.30f, 0f), rigging);
             var forceR = Marker("ForceAnchor_R", new Vector3(Fwd(StanceHalf), -0.30f, 0f), rigging);
             var attachL = RopeAttach(footL, "RopeAttach_L");
@@ -252,16 +261,16 @@ namespace PuppetMaster.Editor
             var r = GameObject.CreatePrimitive(PrimitiveType.Cube);
             r.name = "Rail";
             Object.DestroyImmediate(r.GetComponent<BoxCollider>());
-            r.transform.position = new Vector3(originX, 0.025f, 0f);
-            r.transform.localScale = new Vector3(1.60f, 0.05f, 0.22f);
+            r.transform.position = new Vector3(originX, RailCenterY, 0f);
+            r.transform.localScale = new Vector3(RailLength, RailHeight, RailWidth);
             r.GetComponent<MeshRenderer>().sharedMaterial = rail;
 
             var gr = GameObject.CreatePrimitive(PrimitiveType.Cube);
             gr.name = "Rail_Groove";
             Object.DestroyImmediate(gr.GetComponent<BoxCollider>());
             gr.transform.SetParent(r.transform, worldPositionStays: false);
-            gr.transform.localPosition = new Vector3(0f, 0.51f, 0f);
-            gr.transform.localScale = new Vector3(1f, 0.04f, 0.25f);
+            gr.transform.localPosition = new Vector3(0f, 0.501f, 0f);
+            gr.transform.localScale = new Vector3(1f, 0.02f, 0.28f);
             gr.GetComponent<MeshRenderer>().sharedMaterial = groove;
         }
 
@@ -464,8 +473,8 @@ namespace PuppetMaster.Editor
             go.name = name;
             Object.DestroyImmediate(go.GetComponent<Collider>());
             go.transform.SetParent(parent, worldPositionStays: true);
-            go.transform.position = new Vector3(x, 0.048f, 0f);
-            go.transform.localScale = new Vector3(0.06f, 0.012f, 0.18f);
+            go.transform.position = new Vector3(x, RailTopY + 0.001f, 0f);
+            go.transform.localScale = new Vector3(0.08f, 0.003f, RailWidth * 0.75f);
             go.GetComponent<MeshRenderer>().sharedMaterial = mat;
         }
 
@@ -481,7 +490,7 @@ namespace PuppetMaster.Editor
         {
             var go = new GameObject(name);
             go.transform.SetParent(foot.transform, worldPositionStays: false);
-            go.transform.localPosition = new Vector3(0f, -0.02f, 0f); // bottom of the foot
+            go.transform.localPosition = new Vector3(0f, -FootHeight * 0.5f, 0f); // exact bottom of the foot
             return go.transform;
         }
 

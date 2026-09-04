@@ -668,3 +668,24 @@ trong Unity (Preferences/Project Settings) hoặc chờ bản CLI ổn định h
   - Nâng giới hạn góc depth (`angularXLimit`) trên `pelvisPlaneJoint`, `spine`, `neck` lên `±45°` và `hip` lên `±40°`.
 - **Phím test trên Mac:** `Q` = INWARD (nghiêng vào trong), `E` = OUTWARD (nghiêng ra ngoài), kết hợp với `A` (lùi), `L` (tiến), `Space` (căng cả 2 dây).
 - Đã test và xác nhận trong Play Mode qua Unity MCP: INWARD (~28°), OUTWARD (~28°), Forward (~67°), Backward (~64°), kết hợp diagonal đều hoạt động mượt mà, không yaw ký sinh, giữ chặt chân trên ray.
+
+---
+
+## 2026-09-04 — Fix rail alignment to foot movement axis
+
+### Vấn đề đã xử lý
+- **Nguyên nhân thật sự của rail bị lệch:**
+  1. **Bất đồng bộ hệ toạ độ (Coordinate Basis Disconnect):** Kích thước và toạ độ của `Rail` (`1.60f, 0.05f, 0.22f`), `Rail_Groove` (`0.28` local scale) và `Slot_L`/`Slot_R` (`0.18f` width) được khai báo độc lập với kích thước bàn chân (`FootWidth = 0.13f`, `FootHeight = 0.07f`, `FootY = 0.085f`). Chiều rộng rail quá lớn ($0.22m$) kết hợp với góc nhìn camera 3/4 từ trên xuống ($18^\circ$ pitch) tạo hiệu ứng thị sai (perspective parallax) làm mặt trước của thanh ray nhô ra ngoài quá nhiều so với chân.
+  2. **Dây RopeVisual cắt chéo qua ray:** Điểm neo `BelowRail` trước đây bị lệch ra phía trước ở $Z = -0.95m$ và $Y = -0.02m$, khiến đoạn `LineRenderer` từ khe ray đi chéo qua mặt trên ray hướng về camera thay vì đi thẳng đứng xuống dưới sàn tại $Z = 0$, tạo cảm giác như dây kéo thanh ray lệch ra phía trước.
+
+### Thay đổi đã thực hiện
+- `PuppetPrototypeBuilder.cs`:
+  - Đồng bộ hoá toàn bộ hằng số hình học từ chung một coordinate basis:
+    - Bàn chân: `FootHeight = 0.07f`, `FootLength = 0.26f`, `FootWidth = 0.13f`, `FootY = 0.085f` (đáy bàn chân tại $Y = 0.050f$).
+    - Rail: `RailHeight = 0.05f`, `RailWidth = 0.15f`, `RailLength = 1.50f`, `RailTopY = 0.050f` (mặt trên phẳng đúng với đáy bàn chân), `RailCenterY = 0.025f`.
+    - `Rail` đặt tại `(originX, 0.025f, 0f)`, `Rail_Groove` đặt chính giữa đỉnh ray chạy dọc trục trượt $Z = 0$.
+    - `RopeAttach` đặt chính xác tại đáy bàn chân `localPosition = (0f, -FootHeight * 0.5f, 0f)`.
+    - `BelowRail` và `ForceAnchor` nằm thẳng đứng tại `(Fwd(±StanceHalf), Y, 0f)` (Z = 0) giúp dây luồn thẳng qua khe ray xuống dưới sàn mà không bao giờ cắt qua ray.
+- Đã test và xác nhận trong Play Mode trên cả `PlayerSide.Left` và `PlayerSide.Right`:
+  - Hai bàn chân trượt dọc chính xác trên trục ray tại $Z = 0$, đáy bàn chân tiếp xúc phẳng hoàn toàn với mặt trên của rail.
+  - Rail visual nằm hoàn toàn chính giữa đường trượt bàn chân cả trong Scene và Game View.
