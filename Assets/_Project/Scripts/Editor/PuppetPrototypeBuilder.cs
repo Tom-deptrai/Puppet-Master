@@ -41,7 +41,7 @@ namespace PuppetMaster.Editor
         const float FootHeight = 0.07f;
         const float FootLength = 0.26f;
         const float FootWidth = 0.13f;
-        const float ShoulderZ = 0.19f;
+        const float ShoulderZ = 0.25f;
 
         const float RailHeight = 0.05f;
         const float RailWidth = 0.15f;
@@ -97,8 +97,8 @@ namespace PuppetMaster.Editor
             face.GetComponent<MeshRenderer>().sharedMaterial = mFace;
 
             // ---- arms: exactly 2 arms total in a realistic guard pose ----
-            var (uArmL, lArmL, handL, elbowL) = BuildArm("L", ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
-            var (uArmR, lArmR, handR, elbowR) = BuildArm("R", -ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
+            var (uArmL, lArmL, handL, elbowL, wristL) = BuildArm("L", ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
+            var (uArmR, lArmR, handR, elbowR, wristR) = BuildArm("R", -ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
             var sword = BuildSword(handR, puppet, facing, originX, mBlade, mHilt, mGuard);
 
             // ---- legs: fore/aft on the rail, exact fore↔aft mirror.
@@ -117,8 +117,8 @@ namespace PuppetMaster.Editor
             var spine = Bend(torso, pelvis, new Vector3(Fwd(0f), 1.17f, 0f), fight: 75f, depth: 55f, driven: true);
             var neck = Bend(head, torso, new Vector3(Fwd(0f), 1.64f, 0f), fight: 55f, depth: 55f, driven: true);
 
-            var shoulderL = Bend(uArmL, torso, new Vector3(Fwd(0.02f), 1.48f, ShoulderZ), fight: 85f, depth: 55f, driven: false, passiveSpring: 280f);
-            var shoulderR = Bend(uArmR, torso, new Vector3(Fwd(0.02f), 1.48f, -ShoulderZ), fight: 85f, depth: 55f, driven: false, passiveSpring: 750f);
+            var shoulderL = BendShoulder(uArmL, torso, new Vector3(Fwd(0.02f), 1.46f, ShoulderZ), 75f, 45f, 40f, 350f, 40f);
+            var shoulderR = BendShoulder(uArmR, torso, new Vector3(Fwd(0.02f), 1.46f, -ShoulderZ), 85f, 55f, 60f, 750f, 65f);
 
             var hipL = Bend(uLegL, pelvis, new Vector3(Fwd(-0.035f), 0.97f, 0f), fight: 140f, depth: 55f, driven: true);
             var kneeL = Bend(lLegL, uLegL, new Vector3(Fwd(-0.11f), 0.54f, 0f), fight: 150f, depth: 15f, driven: true);
@@ -196,6 +196,16 @@ namespace PuppetMaster.Editor
                 hip = hipR, knee = kneeR, ankle = ankleR, railJoint = railR,
                 ropeAttach = attachR, railSlot = railSlotR, belowRail = belowR, forceAnchor = forceR,
                 railHomeX = footR.position.x,
+            };
+            rig.leftArm = new PuppetRig.Arm
+            {
+                upperArm = uArmL, lowerArm = lArmL, hand = handL,
+                shoulder = shoulderL, elbow = elbowL, wrist = wristL,
+            };
+            rig.rightArm = new PuppetRig.Arm
+            {
+                upperArm = uArmR, lowerArm = lArmR, hand = handR,
+                shoulder = shoulderR, elbow = elbowR, wrist = wristR,
             };
 
             var controller = puppetGo.AddComponent<PuppetRopeController>();
@@ -279,19 +289,42 @@ namespace PuppetMaster.Editor
             gr.GetComponent<MeshRenderer>().sharedMaterial = groove;
         }
 
-        static (Rigidbody uArm, Rigidbody lArm, Rigidbody hand, ConfigurableJoint elbow) BuildArm(
+        static (Rigidbody uArm, Rigidbody lArm, Rigidbody hand, ConfigurableJoint elbow, ConfigurableJoint wrist) BuildArm(
             string suffix, float shoulderZ, Material mArm, Material mForearm, Material mHand,
             Transform parent, float facing, float originX)
         {
             float Fwd(float d) => originX + facing * d;
             bool isRight = suffix == "R";
 
-            // Guard stance: Upper arm extends forward-down, forearm flexes upward-inward in front of chest
-            Vector3 uArmPos = new Vector3(Fwd(0.08f), 1.36f, shoulderZ * 0.96f);
-            Vector3 elbowPos = new Vector3(Fwd(0.13f), 1.25f, shoulderZ * 0.90f);
-            Vector3 lArmPos = new Vector3(Fwd(0.20f), 1.34f, shoulderZ * 0.82f);
-            Vector3 wristPos = new Vector3(Fwd(0.25f), 1.42f, shoulderZ * 0.74f);
-            Vector3 handPos = new Vector3(Fwd(0.28f), 1.45f, shoulderZ * 0.70f);
+            Vector3 uArmPos;
+            Vector3 elbowPos;
+            Vector3 lArmPos;
+            Vector3 wristPos;
+            Vector3 handPos;
+
+            if (isRight)
+            {
+                // Right arm: Holds sword forward in front of body.
+                // Shoulder is at shoulderZ (-0.25m), flared outside torso box (ends at -0.17m).
+                // Elbow is positioned forward and laterally with clear gap.
+                // Forearm points forward-upward, hand in front of chest.
+                uArmPos = new Vector3(Fwd(0.09f), 1.35f, shoulderZ * 1.02f);
+                elbowPos = new Vector3(Fwd(0.16f), 1.23f, shoulderZ * 0.96f);
+                lArmPos = new Vector3(Fwd(0.28f), 1.33f, shoulderZ * 0.82f);
+                wristPos = new Vector3(Fwd(0.36f), 1.40f, shoulderZ * 0.70f);
+                handPos = new Vector3(Fwd(0.40f), 1.43f, shoulderZ * 0.64f);
+            }
+            else
+            {
+                // Left arm: Natural guard/balance pose.
+                // Shoulder flared at shoulderZ (+0.25m), elbow clear of torso,
+                // forearm flexed forward-upward protecting chest/head.
+                uArmPos = new Vector3(Fwd(0.07f), 1.36f, shoulderZ * 1.02f);
+                elbowPos = new Vector3(Fwd(0.14f), 1.25f, shoulderZ * 0.98f);
+                lArmPos = new Vector3(Fwd(0.22f), 1.34f, shoulderZ * 0.86f);
+                wristPos = new Vector3(Fwd(0.28f), 1.41f, shoulderZ * 0.76f);
+                handPos = new Vector3(Fwd(0.31f), 1.44f, shoulderZ * 0.70f);
+            }
 
             var uArm = Part($"UpperArm_{suffix}", PrimitiveType.Capsule, uArmPos, new Vector3(0.075f, 0.12f, 0.075f), 1.8f, mArm, parent, 1.8f);
 
@@ -306,13 +339,13 @@ namespace PuppetMaster.Editor
             var lArm = Part($"LowerArm_{suffix}", PrimitiveType.Capsule, lArmPos, new Vector3(0.065f, 0.11f, 0.065f), 1.4f, mForearm, parent, 2.0f);
             var hand = Part($"Hand_{suffix}", PrimitiveType.Cube, handPos, new Vector3(0.07f, 0.07f, 0.07f), 0.6f, mHand, parent, 2.5f);
 
-            // Elbow: Hinge in sagittal/fight plane. Prevents backward hyperextension (lowLimit -5 deg), allows forward guard flexion (130 deg).
-            var elbow = BendElbow(lArm, uArm, elbowPos, lowFight: -5f, highFight: 130f, depth: 15f, spring: isRight ? 700f : 240f);
+            // Elbow: Hinge in sagittal/fight plane. Allows forward guard extension/flexion.
+            var elbow = BendElbow(lArm, uArm, elbowPos, lowFight: -10f, highFight: 135f, depth: 20f, spring: isRight ? 750f : 280f);
 
             // Wrist: Keeps hand firmly at the end of the forearm in guard
-            var wrist = Bend(hand, lArm, wristPos, fight: 35f, depth: 25f, driven: false, passiveSpring: isRight ? 550f : 220f);
+            var wrist = Bend(hand, lArm, wristPos, fight: 35f, depth: 25f, driven: false, passiveSpring: isRight ? 600f : 240f);
 
-            return (uArm, lArm, hand, elbow);
+            return (uArm, lArm, hand, elbow, wrist);
         }
 
         static Rigidbody BuildSword(
@@ -321,9 +354,8 @@ namespace PuppetMaster.Editor
         {
             Vector3 gripPos = hand.transform.position;
 
-            // Blade direction authored in rest pose so that in dynamic guard stance
-            // the sword extends forward towards the opponent (+facing) and angled ~25 deg above horizontal
-            Vector3 bladeDir = new Vector3(-facing * 0.30f, 0.94f, 0.15f).normalized;
+            // Blade direction: points forward toward opponent (+facing) and angled ~25 deg above horizontal
+            Vector3 bladeDir = new Vector3(facing * 0.85f, 0.50f, -0.15f).normalized;
             Quaternion swordRot = Quaternion.FromToRotation(Vector3.up, bladeDir);
 
             var swordGo = new GameObject("Sword_R");
@@ -502,6 +534,47 @@ namespace PuppetMaster.Editor
         ///   angularX = depth (inward/outward)          -> Limited to ±`depth` (0 => Locked)
         ///   angularY = yaw                             -> HARD LOCKED
         /// </summary>
+        static ConfigurableJoint BendShoulder(Rigidbody arm, Rigidbody torso, Vector3 worldAnchor,
+            float fightAngle, float depthAngle, float yawAngle, float spring, float damper)
+        {
+            var j = arm.gameObject.AddComponent<ConfigurableJoint>();
+            j.connectedBody = torso;
+            j.autoConfigureConnectedAnchor = false;
+            j.anchor = arm.transform.InverseTransformPoint(worldAnchor);
+            j.connectedAnchor = torso.transform.InverseTransformPoint(worldAnchor);
+            j.axis = new Vector3(1f, 0f, 0f);
+            j.secondaryAxis = new Vector3(0f, 1f, 0f);
+
+            j.xMotion = j.yMotion = j.zMotion = ConfigurableJointMotion.Locked;
+            j.angularXMotion = depthAngle > 0.5f ? ConfigurableJointMotion.Limited : ConfigurableJointMotion.Locked;
+            j.angularYMotion = yawAngle > 0.5f ? ConfigurableJointMotion.Limited : ConfigurableJointMotion.Locked;
+            j.angularZMotion = ConfigurableJointMotion.Limited;
+
+            j.lowAngularXLimit = new SoftJointLimit { limit = -Mathf.Max(1f, depthAngle) };
+            j.highAngularXLimit = new SoftJointLimit { limit = Mathf.Max(1f, depthAngle) };
+            j.angularYLimit = new SoftJointLimit { limit = Mathf.Max(1f, yawAngle) };
+            j.angularZLimit = new SoftJointLimit { limit = Mathf.Max(1f, fightAngle) };
+
+            var noSpring = new SoftJointLimitSpring { spring = 0f, damper = 0f };
+            j.angularXLimitSpring = noSpring;
+            j.angularYZLimitSpring = noSpring;
+
+            j.rotationDriveMode = RotationDriveMode.Slerp;
+            j.slerpDrive = new JointDrive
+            {
+                positionSpring = spring,
+                positionDamper = damper,
+                maximumForce = 35000f,
+            };
+
+            j.projectionMode = JointProjectionMode.PositionAndRotation;
+            j.projectionDistance = 0.03f;
+            j.projectionAngle = 8f;
+            j.enablePreprocessing = false;
+            j.configuredInWorldSpace = false;
+            return j;
+        }
+
         static ConfigurableJoint Bend(Rigidbody child, Rigidbody parent, Vector3 worldAnchor,
             float fight, float depth, bool driven, float passiveSpring = 6f)
         {

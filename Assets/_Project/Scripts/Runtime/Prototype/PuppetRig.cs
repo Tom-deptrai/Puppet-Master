@@ -62,9 +62,24 @@ namespace PuppetMaster.Prototype
         [Tooltip("pelvis -> world: locks depth POSITION + carries the 2-axis lean drive")]
         public ConfigurableJoint pelvisPlaneJoint;
 
+        [Serializable]
+        public struct Arm
+        {
+            public Rigidbody upperArm;
+            public Rigidbody lowerArm;
+            public Rigidbody hand;
+            public ConfigurableJoint shoulder;
+            public ConfigurableJoint elbow;
+            public ConfigurableJoint wrist;
+        }
+
         [Header("Legs")]
         public Leg left;
         public Leg right;
+
+        [Header("Arms")]
+        public Arm leftArm;
+        public Arm rightArm;
 
         [Header("Weapon")]
         public Rigidbody sword;

@@ -88,16 +88,32 @@ namespace PuppetMaster.Prototype
         [Range(0f, 1f)] public float debugLeft = 1f;
         [Range(0f, 1f)] public float debugRight = 1f;
         [Range(-1f, 1f)] public float debugDepth;
+        [Range(-1f, 1f)] public float debugArm;
+        public float debugArmVelocity;
+
+        [Header("Arm Combat Control — Right Arm (Sword)")]
+        public float armExtendPitchGain = 38f;     // shoulder reaches forward
+        public float armSlashYawGain = 34f;        // shoulder slashes across inward
+        public float armElbowExtendGain = 50f;     // elbow opens / extends forward
+        public float armActiveSpring = 850f;
+        public float armRelaxedSpring = 400f;
+        public float armDamper = 45f;
+        public float armMaxForce = 35000f;
+        public float armSwipeImpulseScale = 16f;
+        [Min(1f)] public float armSmoothing = 35f;
 
         // ---- input state ----
         public float LeftInput { get; private set; }
         public float RightInput { get; private set; }
         public float DepthInput { get; private set; }
+        public float ArmInput { get; private set; }
+        public float ArmVelocity { get; private set; }
 
         // ---- smoothed physics state ----
         public float LeftTension { get; private set; }
         public float RightTension { get; private set; }
         public float DepthValue { get; private set; }
+        public float ArmValue { get; private set; }
         public float CombinedTension => 0.5f * (LeftTension + RightTension);
         public float FacingSign => _facingSign;
 
@@ -234,11 +250,13 @@ namespace PuppetMaster.Prototype
         }
 
         /// <summary>Fed by <see cref="PuppetRopeInput"/>.</summary>
-        public void SetInput(float left, float right, float depth)
+        public void SetInput(float left, float right, float depth, float arm = 0f, float armVelocity = 0f)
         {
             LeftInput = Mathf.Clamp01(Finite(left));
             RightInput = Mathf.Clamp01(Finite(right));
             DepthInput = Mathf.Clamp(Finite(depth), -1f, 1f);
+            ArmInput = Mathf.Clamp(Finite(arm), -1f, 1f);
+            ArmVelocity = Finite(armVelocity);
         }
 
         void FixedUpdate()
@@ -250,10 +268,17 @@ namespace PuppetMaster.Prototype
             float lGoal = debugOverrideInput ? debugLeft : LeftInput;
             float rGoal = debugOverrideInput ? debugRight : RightInput;
             float dGoal = debugOverrideInput ? debugDepth : DepthInput;
+            float aGoal = debugOverrideInput ? debugArm : ArmInput;
+            float aVelGoal = debugOverrideInput ? debugArmVelocity : ArmVelocity;
 
             LeftTension = Finite(Mathf.Lerp(LeftTension, lGoal, kt));
             RightTension = Finite(Mathf.Lerp(RightTension, rGoal, kt));
             DepthValue = Finite(Mathf.Lerp(DepthValue, dGoal, kd));
+
+            float ka = 1f - Mathf.Exp(-armSmoothing * dt);
+            ArmValue = Finite(Mathf.Lerp(ArmValue, aGoal, ka));
+
+            DriveSwordArm(ArmValue, aVelGoal);
 
             float l = Shape(LeftTension);
             float r = Shape(RightTension);
@@ -310,6 +335,56 @@ namespace PuppetMaster.Prototype
 
             if (_probing && _probeCount < _probe.Length)
                 _probe[_probeCount++] = new Sample { t = Time.time - _probeT0, fwd = ForwardLeanDeg, depth = DepthLeanDeg };
+        }
+
+        void DriveSwordArm(float armVal, float armVel)
+        {
+            if (_rig == null || _rig.rightArm.shoulder == null) return;
+
+            var shoulder = _rig.rightArm.shoulder;
+            var elbow = _rig.rightArm.elbow;
+
+            float spring = Mathf.Lerp(armRelaxedSpring, armActiveSpring, Mathf.Clamp01(Mathf.Abs(armVal) * 1.6f));
+
+            // Target relative rotation for shoulder:
+            // Slerp drive requires SetTargetWorld.
+            // When armVal > 0 (thrust/slash):
+            //   pitch around joint Z swings upper arm forward (+facing)
+            //   yaw around joint Y sweeps arm across torso inward (-Z in world)
+            // When armVal < 0 (retract):
+            //   pitch pulls upper arm back
+            //   yaw pulls upper arm outward
+            float shoulderPitch = -_facingSign * (armVal * armExtendPitchGain);
+            float shoulderYaw = -_facingSign * (armVal * armSlashYawGain);
+            Quaternion shoulderTarget = Quaternion.Euler(0f, shoulderYaw, shoulderPitch);
+
+            SetDrive(shoulder, spring, armDamper, armMaxForce);
+            SetTargetWorld(shoulder, shoulderTarget);
+
+            if (elbow != null)
+            {
+                // BendElbow axis = (0, 0, 1), hinge limit is [lowFight: -10f, highFight: 135f].
+                // Negative angle extends the elbow; positive flexes it tighter.
+                float elbowDeg = -armVal * armElbowExtendGain;
+                Quaternion elbowTarget = Quaternion.Euler(elbowDeg, 0f, 0f);
+                SetDrive(elbow, spring * 0.9f, armDamper * 0.9f, armMaxForce);
+                elbow.targetRotation = Quaternion.Inverse(elbowTarget);
+            }
+
+            // Swipe momentum / physical inertia:
+            // Fast swipe imparts torque to upper arm, lower arm, and sword bodies
+            if (Mathf.Abs(armVel) > 0.15f)
+            {
+                Vector3 torqueUpper = new Vector3(0f, -_facingSign * armVel * 0.7f, _facingSign * armVel * 0.9f) * armSwipeImpulseScale;
+                Vector3 torqueLower = new Vector3(0f, -_facingSign * armVel * 0.9f, _facingSign * armVel * 1.3f) * armSwipeImpulseScale;
+
+                if (_rig.rightArm.upperArm != null)
+                    _rig.rightArm.upperArm.AddTorque(torqueUpper, ForceMode.Acceleration);
+                if (_rig.rightArm.lowerArm != null)
+                    _rig.rightArm.lowerArm.AddTorque(torqueLower, ForceMode.Acceleration);
+                if (_rig.sword != null)
+                    _rig.sword.AddTorque(torqueLower * 0.5f, ForceMode.Acceleration);
+            }
         }
 
         void DriveLeg(in PuppetRig.Leg leg, float squat, float depthDeg, float combined)

@@ -57,20 +57,20 @@ namespace PuppetMaster.Prototype
                 GUI.color = new Color(1, 1, 1, 0.3f);
                 GUI.DrawTexture(new Rect(w * 0.5f - 1, 0, 2, h), _px);
                 GUI.color = Color.white;
-                GUI.Label(new Rect(w * 0.5f - 210, h - 28, 200, 20),
-                    "◀ LEFT ROPE (Foot_L)   ↕tension  ↔depth", _small);
+                GUI.Label(new Rect(w * 0.5f - 240, h - 28, 230, 20),
+                    "◀ LEFT THUMB   ↕rope L  ↔depth", _small);
                 GUI.Label(new Rect(w * 0.5f + 12, h - 28, 260, 20),
-                    "RIGHT ROPE (Foot_R) ▶", _small);
+                    "RIGHT THUMB ▶   ↕rope R  ↔sword", _small);
             }
 
-            var panel = new Rect(12, 36, 356, 232);
-            GUI.color = new Color(0, 0, 0, 0.6f);
+            var panel = new Rect(12, 36, 364, 252);
+            GUI.color = new Color(0, 0, 0, 0.65f);
             GUI.DrawTexture(panel, _px);
             GUI.color = Color.white;
 
             GUILayout.BeginArea(new Rect(panel.x + 12, panel.y + 8, panel.width - 24, panel.height - 16));
             string sideStr = rig != null ? rig.side.ToString() : "?";
-            GUILayout.Label($"PUPPET — Phase 1.2   <size=11>[{sideStr} · faces {facing}]</size>", _header);
+            GUILayout.Label($"PUPPET — Arm Combat Prototype   <size=11>[{sideStr} · faces {facing}]</size>", _header);
 
             if (controller != null)
             {
@@ -79,6 +79,9 @@ namespace PuppetMaster.Prototype
 
                 float depthIn = input != null ? input.DepthValue : controller.DepthValue;
                 SignedBar("Depth input", depthIn, new Color(0.55f, 0.85f, 0.55f));
+
+                float armIn = input != null ? input.RightArmValue : controller.ArmValue;
+                SignedBar("Sword arm", armIn, new Color(1f, 0.45f, 0.35f));
 
                 float fwd = controller.ForwardLeanDeg;
                 float dep = controller.DepthLeanDeg;
@@ -99,7 +102,7 @@ namespace PuppetMaster.Prototype
                 GUILayout.Label($"Foot separation : <b>{sep:0.00}</b> m  (stand {standSep:0.00})", _label);
             }
 
-            GUILayout.Label("<size=11>A/L rope · Space both · Q inward · E outward · drag: ↓ tension ↔ depth</size>", _small);
+            GUILayout.Label("<size=11>A/L rope · Q/E depth · J/K sword arm · drag: L-thumb ↔depth, R-thumb ↔sword</size>", _small);
             GUILayout.EndArea();
         }
 

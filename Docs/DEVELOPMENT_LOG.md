@@ -8,7 +8,48 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Add prototype arm combat control
+
+Triển khai Arm Combat Control Prototype cho hệ điều khiển 2 ngón tay (2-thumb control) và sửa tư thế neutral của cánh tay:
+
+### 1. Sửa Arm Posture (Không animation cứng, dùng Physics/Joints)
+- **Tách cánh tay khỏi thân:**
+  - Tăng khoảng cách khớp vai `ShoulderZ` từ `0.19m` lên `0.25m` (mặt bên thân người tại $Z = \pm 0.17\text{m}$, đưa vai mở rộng ra ngoài thân $0.08\text{m}$).
+  - Cập nhật toạ độ neutral của cánh tay: Upper Arm đặt tại $Z = \pm 0.255\text{m}$, Elbow tại $Z = \pm 0.245\text{m}$ (tạo khoảng hở rõ rệt giữa cùi chỏ và thân, không còn ép sát hay dính vào torso).
+  - Cẳng tay vươn ra trước ngực: Forearm đặt tại $X = \text{Fwd}(0.28\text{m})$, Bàn tay cầm kiếm tại $X = \text{Fwd}(0.40\text{m})$ (cách mặt trước ngực hơn $0.14\text{m}$), nhìn rất rõ và thoáng.
+  - Lưỡi kiếm (`Sword_R`) hướng thẳng về phía đối thủ (`+facing * 0.85`, chếch lên ~25°), hoàn toàn không chạm hay xuyên vào thân.
+- **Tay trái (Left Arm):**
+  - Giữ nguyên tư thế thủ/thăng bằng (guard/balance) tự nhiên ở phía trước ngực ($X = \text{Fwd}(0.31\text{m})$, $Z = +0.18\text{m}$), khớp vai có lò xo thụ động `350f`, không dính vào thân.
+
+### 2. Arm Combat Control (2-Thumb Input & Physics Inertia)
+- **Mapping điều khiển:**
+  - **Left Thumb:**
+    - Vuốt dọc (Vertical): Lực căng dây chân sau (`Foot_L`).
+    - Vuốt ngang (Horizontal): Độ nghiêng chiều sâu Inward / Outward (`Depth`, tương đương Q/E trên desktop).
+  - **Right Thumb:**
+    - Vuốt dọc (Vertical): Lực căng dây chân trước (`Foot_R`).
+    - Vuốt ngang (Horizontal): Điều khiển cánh tay phải cầm kiếm (`RightArmTarget` từ -1.0 đến +1.0).
+  - **Desktop testing keys:** `J` = Kéo kiếm về thủ / tích thế (-1.0), `K` = Đâm kiếm / chém ngang ra trước (+1.0).
+- **Cơ chế Joint Drive & Momentum:**
+  - Tạo hàm `BendShoulder` với ConfigurableJoint mở các giới hạn góc (Pitch 85°, Yaw 60°, Roll/Depth 55°), cho phép cánh tay vung chém linh hoạt trong không gian 3D.
+  - Khớp vai và khuỷu tay được dẫn động slerp drive:
+    - Khi vuốt ngang phải (+): Khớp vai xoay vươn ra trước (Pitch) và quét vào trong (Yaw), khuỷu tay mở thẳng ra để đâm/chém về phía đối thủ.
+    - Khi vuốt ngang trái (-): Khớp vai kéo lùi về sau, khuỷu tay co chặt thu kiếm về sát sườn.
+  - Đo vận tốc vuốt ngang (`RightArmVelocity`): Vuốt càng nhanh thì torque trợ lực truyền vào UpperArm, LowerArm và Sword càng lớn, tạo tốc độ vung kiếm nhanh và uy lực.
+  - Khi buông tay: Giá trị điều khiển hồi dần về neutral guard (`armReturnSpeed = 5.5f/s`), lò xo khớp nhả mềm (`armRelaxedSpring = 400f`). Khối lượng vật lý của kiếm (1.2kg) và cánh tay tiếp tục đà vung tự nhiên (follow-through inertia) mà không hề bị snap tức thì.
+
+### 3. Kiểm thử Play Mode
+- Arm không dính thân, cùi chỏ có khoảng hở rõ.
+- Bàn tay và kiếm nằm rõ ràng phía trước.
+- Vuốt nhanh tạo momentum lớn, vuốt chậm tạo chuyển động êm.
+- Khi buông ngón tay, kiếm vung theo quán tính rồi từ từ ổn định lại tư thế guard.
+- Hệ thống rope lean (Forward/Backward và Inward/Outward) hoạt động hoàn toàn bình thường, không joint explosion.
+- Cân xứng chính xác cho cả Left side và Right side.
+
+---
+
 ## 2026-09-04 — Fix full body depth lean arms and rail alignment
+
 
 Giải quyết triệt để 3 vấn đề kỹ thuật vật lý, rig và môi trường:
 
