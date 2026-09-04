@@ -90,6 +90,9 @@ namespace PuppetMaster.Prototype
 
         void Update()
         {
+            if (_controller != null && _controller.IsKO)
+                return;
+
             float dt = Time.deltaTime;
             float now = Time.time;
             float halfW = Screen.width * 0.5f;

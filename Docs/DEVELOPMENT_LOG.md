@@ -8,6 +8,53 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Complete combat loop prototype with AI opponent
+
+Hoàn thiện combat loop prototype: Parry/Block → HitQuality → Damage/HP → KO → AI Opponent.
+Giữ nguyên movement, rope control, arm control, weapon physics và CombatSkillRecognizer.
+Không multiplayer, không art/VFX/UI production, không stamina/combo.
+
+### 1. Block / Parry (`SwordCollisionHandler`)
+- Sword-vs-sword phân nhánh: **BLOCK** (defender Guard + clash), **PARRY** (defender chủ động đỡ với tip/arm velocity + relative speed + blade cross), hoặc **CLASH** thuần vật lý.
+- Block: damage = 0, không body-hit impulse phụ; physics contact solver vẫn phản lực.
+- Parry: damage = 0 + impulse/torque lệch kiếm attacker (physics-based, không teleport/animation).
+- Chỉ kiếm “attacker” resolve clash (tránh double-count khi cả hai Rigidbody nhận OnCollisionEnter).
+- Threshold SerializeField để tuning.
+
+### 2. HitQuality
+- `CombatHitQuality`: Invalid / Glancing / Clean / Heavy từ CombatSkill + ImpactStrength + hướng lưỡi + body part + relative velocity.
+- Skill None/Guard → Invalid hoặc Glancing thấp — flailing không phải chiến thuật tối ưu.
+
+### 3. Damage + HP (`PuppetCombatHealth`)
+- Max HP 100. Damage = base(HitQuality) × bodyMultiplier × impactBonus.
+- Head 1.55 / Torso 1.0 / Arm 0.55 / Leg 0.65.
+- Hit cooldown + contact refresh chống damage liên tục khi kiếm còn dính.
+- Block/Parry = 0 damage.
+
+### 4. KO
+- HP ≤ 0 → tắt input/AI, `PuppetRopeController.SetKO` giảm spring → sụp vật lý; kiếm vẫn joint.
+- Không tự hồi sinh. **R** = reset round (`CombatMatchController`).
+
+### 5. AI Opponent (`PuppetAIOpponent`)
+- Target thành full puppet `Puppet_Right` cùng controller/physics với Player.
+- States: Guard → Approach → Attack (Slash/Thrust/Overhead) → Recover; Defend (Guard hoặc Parry attempt).
+- Chỉ `SetInput` — không teleport, không auto-hit, không damage cheat.
+- Params: aggression, reactionTime (≈0.2–0.5s), guardChance, parryChance, attackCooldown.
+
+### HUD / Scene
+- Player HP, Target HP, KO banner, Last Hit (Skill/Quality/Impact/Part/Damage/Outcome), AI State.
+- Scene rebuild: `Puppet Master ▸ Phase 1 ▸ Build Combat Prototype`.
+
+### Kiểm thử Play Mode (Unity MCP)
+- Cả hai bắt đầu 100 HP; Clean torso ~15 dmg; Glancing arm ~2; Heavy head cao; Invalid = 0.
+- Block/Parry report giữ HP; KO → pelvis sụp (~0.49m), AI tắt; R reset về 100/Guard.
+- Free fight vài giây: AI chuyển state, có Clash/hit nhẹ, sword joints Infinity + grip ổn, 0 error console.
+
+### Test phím
+`A/L` dây · `Q/E` depth · `J/K` sword arm · `R` reset round.
+
+---
+
 ## 2026-09-04 — Rebuild puppet arm rig for natural anatomy
 
 ### Nguyên nhân thật sự khiến arm rig nhìn sai

@@ -85,6 +85,7 @@ namespace PuppetMaster.Prototype
         public Rigidbody sword;
         public SwordCollisionHandler swordCollision;
         public CombatSkillRecognizer skillRecognition;
+        public PuppetCombatHealth combatHealth;
 
         [Header("Reference values (captured by the builder)")]
         public float standingPelvisHeight = 1.06f;

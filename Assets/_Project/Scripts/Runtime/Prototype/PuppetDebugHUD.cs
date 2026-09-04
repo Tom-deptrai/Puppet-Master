@@ -12,6 +12,10 @@ namespace PuppetMaster.Prototype
         public PuppetRopeController controller;
         public PuppetRig rig;
         public PuppetRopeInput input;
+        public PuppetCombatHealth playerHealth;
+        public PuppetCombatHealth opponentHealth;
+        public PuppetAIOpponent opponentAI;
+        public CombatMatchController match;
         public bool drawZones = true;
 
         static readonly Color LeftTint = new(0.30f, 0.60f, 1f);
@@ -25,6 +29,29 @@ namespace PuppetMaster.Prototype
             _px = new Texture2D(1, 1);
             _px.SetPixel(0, 0, Color.white);
             _px.Apply();
+        }
+
+        void Start()
+        {
+            if (playerHealth == null && rig != null)
+                playerHealth = rig.combatHealth != null ? rig.combatHealth : rig.GetComponent<PuppetCombatHealth>();
+            if (match == null)
+                match = FindFirstObjectByType<CombatMatchController>();
+            if (match != null)
+            {
+                if (playerHealth == null) playerHealth = match.playerHealth;
+                if (opponentHealth == null) opponentHealth = match.opponentHealth;
+            }
+            if (opponentHealth == null)
+            {
+                foreach (var h in FindObjectsByType<PuppetCombatHealth>(FindObjectsSortMode.None))
+                {
+                    if (h == playerHealth) continue;
+                    opponentHealth = h;
+                    opponentAI = h.GetComponent<PuppetAIOpponent>();
+                    break;
+                }
+            }
         }
 
         void OnDestroy()
@@ -63,14 +90,28 @@ namespace PuppetMaster.Prototype
                     "RIGHT THUMB ▶   ↕rope R  ↔xR", _small);
             }
 
-            var panel = new Rect(12, 36, 364, 452);
+            var panel = new Rect(12, 36, 390, 560);
             GUI.color = new Color(0, 0, 0, 0.65f);
             GUI.DrawTexture(panel, _px);
             GUI.color = Color.white;
 
             GUILayout.BeginArea(new Rect(panel.x + 12, panel.y + 8, panel.width - 24, panel.height - 16));
             string sideStr = rig != null ? rig.side.ToString() : "?";
-            GUILayout.Label($"PUPPET — Unified 2-Thumb Control   <size=11>[{sideStr} · faces {facing}]</size>", _header);
+            GUILayout.Label($"PUPPET — Combat Loop Prototype   <size=11>[{sideStr} · faces {facing}]</size>", _header);
+
+            // ---- HP / KO ----
+            float pHP = playerHealth != null ? playerHealth.CurrentHP : -1f;
+            float oHP = opponentHealth != null ? opponentHealth.CurrentHP : -1f;
+            bool pKO = playerHealth != null && playerHealth.IsKO;
+            bool oKO = opponentHealth != null && opponentHealth.IsKO;
+            GUILayout.Label(
+                $"Player HP: <b>{(pHP >= 0f ? pHP.ToString("0") : "?")}</b>/100" +
+                (pKO ? "  <color=#ff4444><b>PLAYER KO</b></color>" : ""), _label);
+            GUILayout.Label(
+                $"Target HP: <b>{(oHP >= 0f ? oHP.ToString("0") : "?")}</b>/100" +
+                (oKO ? "  <color=#ff4444><b>TARGET KO</b></color>" : ""), _label);
+            if (opponentAI != null)
+                GUILayout.Label($"AI State: <b>{opponentAI.State}</b>", _small);
 
             if (controller != null)
             {
@@ -97,10 +138,6 @@ namespace PuppetMaster.Prototype
                 float standY = rig != null ? Mathf.Max(0.01f, rig.standingPelvisHeight) : 1f;
                 GUILayout.Label($"Pelvis : <b>{pelvisY:0.00}</b> m  (<b>{pelvisY / standY * 100f:0}%</b> standing)", _label);
 
-                float sep = controller.FootSeparation;
-                float standSep = rig != null ? rig.standingFootSeparation : 0.32f;
-                GUILayout.Label($"Foot separation : <b>{sep:0.00}</b> m  (stand {standSep:0.00})", _label);
-
                 var skills = rig != null ? rig.skillRecognition : null;
                 if (skills == null)
                     skills = GetComponent<CombatSkillRecognizer>();
@@ -111,39 +148,36 @@ namespace PuppetMaster.Prototype
                         $"Tip speed : <b>{skills.TipSpeed:0.00} m/s</b>  |  " +
                         $"Angular: <b>{skills.SwordAngularSpeed:0.00} rad/s</b>", _label);
                     GUILayout.Label(
-                        $"Tip fwd/lat/vert : <b>{skills.ForwardTipSpeed:+0.00;-0.00;0.00} / " +
-                        $"{skills.LateralTipSpeed:+0.00;-0.00;0.00} / " +
-                        $"{skills.VerticalTipSpeed:+0.00;-0.00;0.00}</b> m/s", _label);
-                    GUILayout.Label(
-                        $"Blade fwd/up : <b>{skills.BladeAlignment:0.00} / {skills.BladeUpAlignment:0.00}</b>" +
-                        $"  |  along blade: <b>{skills.AlongBladeFraction:0.00}</b>", _label);
-                    GUILayout.Label(
                         $"Arm Input: <b>{skills.ArmInput:+0.00;-0.00;0.00}</b>  |  " +
                         $"Guard: <b>{(skills.IsGuarding ? "ON" : "OFF")}</b>", _label);
                 }
 
-                // ---- Combat Physics Prototype Info ----
-                var swordHandler = rig != null ? rig.swordCollision : null;
-                if (swordHandler == null && rig != null && rig.sword != null)
-                    swordHandler = rig.sword.GetComponent<SwordCollisionHandler>();
+                CombatHitReport hit = default;
+                bool hasHit = false;
+                if (match != null && match.HasLastHit) { hit = match.LastHit; hasHit = true; }
+                else if (playerHealth != null && playerHealth.HasLatestHit) { hit = playerHealth.LatestHit; hasHit = true; }
+                else if (opponentHealth != null && opponentHealth.HasLatestHit) { hit = opponentHealth.LatestHit; hasHit = true; }
 
-                if (swordHandler != null && swordHandler.HasImpact)
+                if (hasHit)
                 {
-                    var hit = swordHandler.LatestImpact;
                     float age = Time.time - hit.time;
-                    string catColor = hit.category == ImpactCategory.Strong ? "#ff4444" :
-                                      hit.category == ImpactCategory.Medium ? "#ffbb33" : "#aaaaaa";
+                    string outcomeCol = hit.outcome == CombatOutcome.Parry ? "#66ff99" :
+                                        hit.outcome == CombatOutcome.Block ? "#66ccff" :
+                                        hit.outcome == CombatOutcome.BodyHit ? "#ff8866" : "#cccccc";
+                    GUILayout.Label($"<b>LAST HIT ({age:0.0}s):</b>", _label);
                     GUILayout.Label(
-                        $"<b>LAST HIT ({age:0.0}s ago):</b> {hit.bodyPart} | <b>{hit.relativeSpeed:0.00} m/s</b>\n" +
-                        $"Strength: <b>{hit.impactStrength:0.00}</b>  [<color={catColor}><b>{hit.category.ToString().ToUpper()}</b></color>]", _label);
+                        $"  Skill: <b>{hit.skill}</b>  Quality: <b>{hit.quality}</b>\n" +
+                        $"  Impact: <b>{hit.impactStrength:0.00}</b> ({hit.impactCategory})  Part: <b>{hit.bodyPart}</b>\n" +
+                        $"  Damage: <b>{hit.damage:0.0}</b>  " +
+                        $"<color={outcomeCol}><b>{hit.outcome}</b></color>", _label);
                 }
                 else
                 {
-                    GUILayout.Label("<b>COMBAT:</b> No hits yet (swing sword at target)", _small);
+                    GUILayout.Label("<b>COMBAT:</b> No hits yet", _small);
                 }
             }
 
-            GUILayout.Label("<size=11>A/L rope · Q/E depth · J/K sword arm · 2-thumb: depth=(xL+xR)/2 · sword=(xR-xL)/2</size>", _small);
+            GUILayout.Label("<size=11>A/L rope · Q/E depth · J/K sword · R = reset round</size>", _small);
             GUILayout.EndArea();
         }
 

@@ -91,6 +91,11 @@ namespace PuppetMaster.Prototype
         [Range(-1f, 1f)] public float debugArm;
         public float debugArmVelocity;
 
+        [Header("KO collapse")]
+        [Tooltip("When KO, springs lerp toward these slack values so the puppet collapses physically.")]
+        public float koSpringScale = 0.08f;
+        public float koAssistScale = 0.05f;
+
         [Header("Arm Combat Control — Right Arm (Sword)")]
         public float armExtendPitchGain = 38f;     // shoulder reaches forward
         public float armSlashYawGain = 34f;        // shoulder slashes across inward
@@ -154,6 +159,7 @@ namespace PuppetMaster.Prototype
 
         PuppetRig _rig;
         float _facingSign = 1f;
+        bool _ko;
 
         // ---- response-time probe (dev tooling; harmless when idle) ----
         struct Sample { public float t, fwd, depth; }
@@ -250,14 +256,29 @@ namespace PuppetMaster.Prototype
                 Physics.IgnoreCollision(x, y, true);
         }
 
-        /// <summary>Fed by <see cref="PuppetRopeInput"/>.</summary>
+        /// <summary>Fed by <see cref="PuppetRopeInput"/> or <see cref="PuppetAIOpponent"/>.</summary>
         public void SetInput(float left, float right, float depth, float arm = 0f, float armVelocity = 0f)
         {
+            if (_ko) return;
             LeftInput = Mathf.Clamp01(Finite(left));
             RightInput = Mathf.Clamp01(Finite(right));
             DepthInput = Mathf.Clamp(Finite(depth), -1f, 1f);
             ArmInput = Mathf.Clamp(Finite(arm), -1f, 1f);
             ArmVelocity = Finite(armVelocity);
+        }
+
+        public bool IsKO => _ko;
+
+        public void SetKO(bool ko)
+        {
+            _ko = ko;
+            if (ko)
+            {
+                LeftInput = RightInput = 0f;
+                DepthInput = 0f;
+                ArmInput = 0f;
+                ArmVelocity = 0f;
+            }
         }
 
         void FixedUpdate()
@@ -266,11 +287,11 @@ namespace PuppetMaster.Prototype
             float kt = 1f - Mathf.Exp(-tensionSmoothing * dt);
             float kd = 1f - Mathf.Exp(-depthSmoothing * dt);
 
-            float lGoal = debugOverrideInput ? debugLeft : LeftInput;
-            float rGoal = debugOverrideInput ? debugRight : RightInput;
-            float dGoal = debugOverrideInput ? debugDepth : DepthInput;
-            float aGoal = debugOverrideInput ? debugArm : ArmInput;
-            float aVelGoal = debugOverrideInput ? debugArmVelocity : ArmVelocity;
+            float lGoal = _ko ? 0f : (debugOverrideInput ? debugLeft : LeftInput);
+            float rGoal = _ko ? 0f : (debugOverrideInput ? debugRight : RightInput);
+            float dGoal = _ko ? 0f : (debugOverrideInput ? debugDepth : DepthInput);
+            float aGoal = _ko ? 0f : (debugOverrideInput ? debugArm : ArmInput);
+            float aVelGoal = _ko ? 0f : (debugOverrideInput ? debugArmVelocity : ArmVelocity);
             EffectiveArmVelocity = aVelGoal;
 
             LeftTension = Finite(Mathf.Lerp(LeftTension, lGoal, kt));
@@ -280,11 +301,16 @@ namespace PuppetMaster.Prototype
             float ka = 1f - Mathf.Exp(-armSmoothing * dt);
             ArmValue = Finite(Mathf.Lerp(ArmValue, aGoal, ka));
 
-            DriveSwordArm(ArmValue, aVelGoal);
+            if (!_ko)
+                DriveSwordArm(ArmValue, aVelGoal);
+            else
+                DriveSwordArm(0f, 0f);
 
             float l = Shape(LeftTension);
             float r = Shape(RightTension);
-            float combined = 0.5f * (l + r);
+            float combined = _ko ? 0f : 0.5f * (l + r);
+            float springScale = _ko ? koSpringScale : 1f;
+            float assistScaleKO = _ko ? koAssistScale : 1f;
             float squatL = Mathf.Lerp(1f - combined, 1f - l, perSideSquatWeight);
             float squatR = Mathf.Lerp(1f - combined, 1f - r, perSideSquatWeight);
 
@@ -310,7 +336,8 @@ namespace PuppetMaster.Prototype
 
             // ---- pelvis: full lean, anchored to the world with full-body Z arc swing ----
             SetDrive(_rig.pelvisPlaneJoint,
-                Mathf.Lerp(pelvisSlackSpring, pelvisStandSpring, combined), pelvisDamper, pelvisMaxForce);
+                Mathf.Lerp(pelvisSlackSpring, pelvisStandSpring, combined) * springScale,
+                pelvisDamper, pelvisMaxForce);
             SetTargetWorld(_rig.pelvisPlaneJoint, leanWorld);
 
             // Guide pelvis Z coordinate so the entire lower body tilts from the feet up
@@ -321,16 +348,20 @@ namespace PuppetMaster.Prototype
             }
 
             // ---- spine + neck: follow the same 2-axis lean a fraction more ----
-            SetDrive(_rig.spine, Mathf.Lerp(spineSlackSpring, spineStandSpring, combined), spineDamper, spineMaxForce);
+            SetDrive(_rig.spine,
+                Mathf.Lerp(spineSlackSpring, spineStandSpring, combined) * springScale,
+                spineDamper, spineMaxForce);
             SetTargetWorld(_rig.spine, Quaternion.Slerp(Quaternion.identity, leanWorld, spineFollow));
-            SetDrive(_rig.neck, Mathf.Lerp(spineSlackSpring * 0.4f, spineStandSpring * 0.35f, combined), spineDamper, spineMaxForce * 0.4f);
+            SetDrive(_rig.neck,
+                Mathf.Lerp(spineSlackSpring * 0.4f, spineStandSpring * 0.35f, combined) * springScale,
+                spineDamper, spineMaxForce * 0.4f);
             SetTargetWorld(_rig.neck, Quaternion.Slerp(Quaternion.identity, leanWorld, neckFollow));
 
             // ---- legs: squat (fight plane) + depth follow so the body stays one piece from ankles up ----
-            DriveLeg(_rig.left, squatL, depthDeg, combined);
-            DriveLeg(_rig.right, squatR, depthDeg, combined);
+            DriveLeg(_rig.left, squatL, depthDeg, combined, springScale);
+            DriveLeg(_rig.right, squatR, depthDeg, combined, springScale);
 
-            TorsoAssist(leanWorld, combined);
+            TorsoAssist(leanWorld, combined * assistScaleKO);
 
             RopePull(_rig.left, l);
             RopePull(_rig.right, r);
@@ -387,9 +418,9 @@ namespace PuppetMaster.Prototype
             }
         }
 
-        void DriveLeg(in PuppetRig.Leg leg, float squat, float depthDeg, float combined)
+        void DriveLeg(in PuppetRig.Leg leg, float squat, float depthDeg, float combined, float springScale = 1f)
         {
-            float spring = Mathf.Lerp(legSlackSpring, legStandSpring, combined);
+            float spring = Mathf.Lerp(legSlackSpring, legStandSpring, combined) * springScale;
 
             // Hip & Knee flex in the fight plane; Ankle tilts the leg column from the foot in depth
             Quaternion hipRot = Quaternion.Euler(depthDeg * depthHipFollow, 0f, squat * hipSquatDeg);
