@@ -73,6 +73,9 @@ namespace PuppetMaster.Editor
             Material mSlot = Mat("Rail_Slot", new Color(0.16f, 0.17f, 0.20f));
             Material mGround = Mat("Ground", new Color(0.13f, 0.14f, 0.16f));
             Material mRope = UnlitMat("Rope", Color.white);
+            Material mBlade = Mat("Weapon_Blade", new Color(0.85f, 0.88f, 0.92f));
+            Material mHilt = Mat("Weapon_Hilt", new Color(0.25f, 0.20f, 0.16f));
+            Material mGuard = Mat("Weapon_Guard", new Color(0.75f, 0.62f, 0.35f));
 
             ConfigureCameraAndLight(originX, facing);
             BuildEnvironment(originX, mGround, mRail, mSlot);
@@ -96,6 +99,7 @@ namespace PuppetMaster.Editor
             // ---- arms: exactly 2 arms total in a realistic guard pose ----
             var (uArmL, lArmL, handL, elbowL) = BuildArm("L", ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
             var (uArmR, lArmR, handR, elbowR) = BuildArm("R", -ShoulderZ, mLimb, mLimb, mFoot, puppet, facing, originX);
+            var sword = BuildSword(handR, puppet, facing, originX, mBlade, mHilt, mGuard);
 
             // ---- legs: fore/aft on the rail, exact fore↔aft mirror.
             //      Foot_R LEADS (toward opponent, +facing); Foot_L is the rear foot.
@@ -113,8 +117,8 @@ namespace PuppetMaster.Editor
             var spine = Bend(torso, pelvis, new Vector3(Fwd(0f), 1.17f, 0f), fight: 75f, depth: 55f, driven: true);
             var neck = Bend(head, torso, new Vector3(Fwd(0f), 1.64f, 0f), fight: 55f, depth: 55f, driven: true);
 
-            var shoulderL = Bend(uArmL, torso, new Vector3(Fwd(0.02f), 1.48f, ShoulderZ), fight: 85f, depth: 55f, driven: false, passiveSpring: 260f);
-            var shoulderR = Bend(uArmR, torso, new Vector3(Fwd(0.02f), 1.48f, -ShoulderZ), fight: 85f, depth: 55f, driven: false, passiveSpring: 260f);
+            var shoulderL = Bend(uArmL, torso, new Vector3(Fwd(0.02f), 1.48f, ShoulderZ), fight: 85f, depth: 55f, driven: false, passiveSpring: 280f);
+            var shoulderR = Bend(uArmR, torso, new Vector3(Fwd(0.02f), 1.48f, -ShoulderZ), fight: 85f, depth: 55f, driven: false, passiveSpring: 750f);
 
             var hipL = Bend(uLegL, pelvis, new Vector3(Fwd(-0.035f), 0.97f, 0f), fight: 140f, depth: 55f, driven: true);
             var kneeL = Bend(lLegL, uLegL, new Vector3(Fwd(-0.11f), 0.54f, 0f), fight: 150f, depth: 15f, driven: true);
@@ -175,6 +179,7 @@ namespace PuppetMaster.Editor
             rig.facingSign = facing;
             rig.pelvis = pelvis; rig.torso = torso; rig.head = head;
             rig.spine = spine; rig.neck = neck; rig.pelvisPlaneJoint = plane;
+            rig.sword = sword;
             rig.standingPelvisHeight = pelvis.position.y;
             rig.standingHeadHeight = head.position.y;
             rig.standingFootSeparation = Mathf.Abs(footL.position.x - footR.position.x);
@@ -279,13 +284,14 @@ namespace PuppetMaster.Editor
             Transform parent, float facing, float originX)
         {
             float Fwd(float d) => originX + facing * d;
+            bool isRight = suffix == "R";
 
             // Guard stance: Upper arm extends forward-down, forearm flexes upward-inward in front of chest
-            Vector3 uArmPos = new Vector3(Fwd(0.07f), 1.36f, shoulderZ * 0.96f);
-            Vector3 elbowPos = new Vector3(Fwd(0.12f), 1.25f, shoulderZ * 0.90f);
-            Vector3 lArmPos = new Vector3(Fwd(0.16f), 1.34f, shoulderZ * 0.82f);
-            Vector3 wristPos = new Vector3(Fwd(0.20f), 1.43f, shoulderZ * 0.74f);
-            Vector3 handPos = new Vector3(Fwd(0.23f), 1.46f, shoulderZ * 0.70f);
+            Vector3 uArmPos = new Vector3(Fwd(0.08f), 1.36f, shoulderZ * 0.96f);
+            Vector3 elbowPos = new Vector3(Fwd(0.13f), 1.25f, shoulderZ * 0.90f);
+            Vector3 lArmPos = new Vector3(Fwd(0.20f), 1.34f, shoulderZ * 0.82f);
+            Vector3 wristPos = new Vector3(Fwd(0.25f), 1.42f, shoulderZ * 0.74f);
+            Vector3 handPos = new Vector3(Fwd(0.28f), 1.45f, shoulderZ * 0.70f);
 
             var uArm = Part($"UpperArm_{suffix}", PrimitiveType.Capsule, uArmPos, new Vector3(0.075f, 0.12f, 0.075f), 1.8f, mArm, parent, 1.8f);
 
@@ -301,12 +307,109 @@ namespace PuppetMaster.Editor
             var hand = Part($"Hand_{suffix}", PrimitiveType.Cube, handPos, new Vector3(0.07f, 0.07f, 0.07f), 0.6f, mHand, parent, 2.5f);
 
             // Elbow: Hinge in sagittal/fight plane. Prevents backward hyperextension (lowLimit -5 deg), allows forward guard flexion (130 deg).
-            var elbow = BendElbow(lArm, uArm, elbowPos, lowFight: -5f, highFight: 130f, depth: 15f, spring: 240f);
+            var elbow = BendElbow(lArm, uArm, elbowPos, lowFight: -5f, highFight: 130f, depth: 15f, spring: isRight ? 700f : 240f);
 
             // Wrist: Keeps hand firmly at the end of the forearm in guard
-            var wrist = Bend(hand, lArm, wristPos, fight: 35f, depth: 25f, driven: false, passiveSpring: 220f);
+            var wrist = Bend(hand, lArm, wristPos, fight: 35f, depth: 25f, driven: false, passiveSpring: isRight ? 550f : 220f);
 
             return (uArm, lArm, hand, elbow);
+        }
+
+        static Rigidbody BuildSword(
+            Rigidbody hand, Transform parent, float facing, float originX,
+            Material mBlade, Material mHilt, Material mGuard)
+        {
+            Vector3 gripPos = hand.transform.position;
+
+            // Blade direction authored in rest pose so that in dynamic guard stance
+            // the sword extends forward towards the opponent (+facing) and angled ~25 deg above horizontal
+            Vector3 bladeDir = new Vector3(-facing * 0.30f, 0.94f, 0.15f).normalized;
+            Quaternion swordRot = Quaternion.FromToRotation(Vector3.up, bladeDir);
+
+            var swordGo = new GameObject("Sword_R");
+            swordGo.transform.SetParent(parent, worldPositionStays: true);
+            swordGo.transform.SetPositionAndRotation(gripPos, swordRot);
+
+            // 1. Handle (cylindrical grip)
+            var handle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            handle.name = "Handle_Mesh";
+            Object.DestroyImmediate(handle.GetComponent<Collider>());
+            handle.transform.SetParent(swordGo.transform, worldPositionStays: false);
+            handle.transform.localPosition = new Vector3(0f, -0.03f, 0f);
+            handle.transform.localRotation = Quaternion.identity;
+            handle.transform.localScale = new Vector3(0.032f, 0.07f, 0.032f); // diameter 0.032m, length 0.14m
+            handle.GetComponent<MeshRenderer>().sharedMaterial = mHilt;
+
+            // Pommel at bottom of handle
+            var pommel = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            pommel.name = "Pommel_Mesh";
+            Object.DestroyImmediate(pommel.GetComponent<Collider>());
+            pommel.transform.SetParent(swordGo.transform, worldPositionStays: false);
+            pommel.transform.localPosition = new Vector3(0f, -0.105f, 0f);
+            pommel.transform.localScale = new Vector3(0.05f, 0.05f, 0.05f);
+            pommel.GetComponent<MeshRenderer>().sharedMaterial = mGuard;
+
+            // 2. Crossguard (crossbar between handle and blade)
+            var guard = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            guard.name = "Guard_Mesh";
+            Object.DestroyImmediate(guard.GetComponent<Collider>());
+            guard.transform.SetParent(swordGo.transform, worldPositionStays: false);
+            guard.transform.localPosition = new Vector3(0f, 0.045f, 0f);
+            guard.transform.localRotation = Quaternion.identity;
+            guard.transform.localScale = new Vector3(0.12f, 0.022f, 0.04f);
+            guard.GetComponent<MeshRenderer>().sharedMaterial = mGuard;
+
+            // 3. Blade (straight flat blade)
+            var blade = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            blade.name = "Blade_Mesh";
+            Object.DestroyImmediate(blade.GetComponent<Collider>());
+            blade.transform.SetParent(swordGo.transform, worldPositionStays: false);
+            blade.transform.localPosition = new Vector3(0f, 0.44f, 0f);
+            blade.transform.localRotation = Quaternion.identity;
+            blade.transform.localScale = new Vector3(0.045f, 0.74f, 0.015f); // length 0.74m
+            blade.GetComponent<MeshRenderer>().sharedMaterial = mBlade;
+
+            // Colliders on the sword Rigidbody
+            var bladeCol = swordGo.AddComponent<BoxCollider>();
+            bladeCol.center = new Vector3(0f, 0.44f, 0f);
+            bladeCol.size = new Vector3(0.045f, 0.74f, 0.015f);
+
+            var handleCol = swordGo.AddComponent<CapsuleCollider>();
+            handleCol.center = new Vector3(0f, -0.03f, 0f);
+            handleCol.radius = 0.025f;
+            handleCol.height = 0.16f;
+            handleCol.direction = 1; // Y-axis
+
+            // Rigidbody
+            var rb = swordGo.AddComponent<Rigidbody>();
+            rb.mass = 1.2f;
+            rb.linearDamping = 0.05f;
+            rb.angularDamping = 1.2f;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            rb.maxAngularVelocity = 28f;
+            rb.solverIterations = 48;
+            rb.solverVelocityIterations = 24;
+
+            // ConfigurableJoint to Hand_R
+            var j = swordGo.AddComponent<ConfigurableJoint>();
+            j.connectedBody = hand;
+            j.autoConfigureConnectedAnchor = false;
+            j.anchor = Vector3.zero; // at gripPos in sword local space
+            j.connectedAnchor = hand.transform.InverseTransformPoint(gripPos);
+            j.axis = new Vector3(1f, 0f, 0f);
+            j.secondaryAxis = new Vector3(0f, 1f, 0f);
+
+            j.xMotion = j.yMotion = j.zMotion = ConfigurableJointMotion.Locked;
+            j.angularXMotion = j.angularYMotion = j.angularZMotion = ConfigurableJointMotion.Locked;
+
+            j.projectionMode = JointProjectionMode.PositionAndRotation;
+            j.projectionDistance = 0.01f;
+            j.projectionAngle = 2f;
+            j.enablePreprocessing = false;
+            j.configuredInWorldSpace = false;
+
+            return rb;
         }
 
         static ConfigurableJoint BendElbow(Rigidbody child, Rigidbody parent, Vector3 worldAnchor,
@@ -339,7 +442,7 @@ namespace PuppetMaster.Editor
             {
                 positionSpring = spring,
                 positionDamper = spring * 0.1f,
-                maximumForce = 4000f,
+                maximumForce = 15000f,
             };
 
             j.projectionMode = JointProjectionMode.PositionAndRotation;
@@ -427,7 +530,7 @@ namespace PuppetMaster.Editor
             {
                 positionSpring = driven ? 0f : passiveSpring,
                 positionDamper = driven ? 0f : passiveSpring * 0.25f,
-                maximumForce = driven ? 0f : 180f,
+                maximumForce = driven ? 0f : 15000f,
             };
 
             j.projectionMode = JointProjectionMode.PositionAndRotation;

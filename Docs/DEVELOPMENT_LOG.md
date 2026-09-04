@@ -689,3 +689,27 @@ trong Unity (Preferences/Project Settings) hoặc chờ bản CLI ổn định h
 - Đã test và xác nhận trong Play Mode trên cả `PlayerSide.Left` và `PlayerSide.Right`:
   - Hai bàn chân trượt dọc chính xác trên trục ray tại $Z = 0$, đáy bàn chân tiếp xúc phẳng hoàn toàn với mặt trên của rail.
   - Rail visual nằm hoàn toàn chính giữa đường trượt bàn chân cả trong Scene và Game View.
+
+---
+
+## 2026-09-04 — Add prototype sword physics to right hand
+
+### Thay đổi đã thực hiện
+- **Cấu trúc kiếm (`Sword_R`):**
+  - Gồm `Handle_Mesh` (cylinder hilt), `Pommel_Mesh` (sphere), `Guard_Mesh` (crossbar) và `Blade_Mesh` (box blade dài 0.74m).
+  - Có `BoxCollider` (blade) và `CapsuleCollider` (handle/hilt).
+  - `Rigidbody`: `mass = 1.2f`, `linearDamping = 0.05f`, `angularDamping = 1.2f`, `collisionDetectionMode = ContinuousDynamic`.
+- **Kết nối khớp (Joint):**
+  - Gắn vào `Hand_R` bằng `ConfigurableJoint` (khoá 6 DOF: linear locked, angular locked với `projectionMode = PositionAndRotation`, `projectionDistance = 0.01f`, `projectionAngle = 2f`).
+  - Lực inertia và moment quán tính của kiếm truyền trực tiếp vào khớp cổ tay (`Wrist`), khuỷu tay (`Elbow`), và vai (`Shoulder`).
+- **Tùy chỉnh tư thế tay cầm kiếm:**
+  - Nâng `maximumForce` trên các khớp thụ động từ `180f` lên `15000f` để lực đàn hồi không bị bão hòa sớm dưới trọng lượng của vũ khí.
+  - Điều chỉnh nhẹ độ cứng tư thế thủ (guard posture): `shoulderR` spring `750f`, `elbowR` spring `700f`, `wristR` spring `550f`.
+  - Căn hướng kiếm trong thế thủ hướng thẳng về phía đối thủ (~25° so với phương ngang).
+- **Collision Filtering:**
+  - Thêm `Pair` ignores trong `PuppetRopeController.IgnoreAdjacentCollisions()` giữa `sword` và `Hand_R`, `LowerArm_R`, `UpperArm_R`, `Torso`, `Head` để tránh tự va chạm gây rung lắc.
+- **Kiểm thử Play Mode:**
+  - Đứng bình thường: kiếm nằm chắc chắn trong tay, tư thế thủ đẹp.
+  - Lean trước/sau (A/L) và nghiêng sâu In/Out (Q/E): kiếm chuyển động theo tự nhiên, truyền quán tính và dao động thực tế vào cánh tay.
+  - Chuyển hướng nhanh: kiếm có đà nhưng không bay khỏi tay, không joint explosion.
+  - Đã kiểm tra đối xứng gương trên cả `PlayerSide.Left` và `PlayerSide.Right`.

@@ -199,6 +199,16 @@ namespace PuppetMaster.Prototype
             Pair(_rig.torso, uR); Pair(_rig.torso, lR); Pair(_rig.torso, hR);
             Pair(uR, lR); Pair(lR, hR); Pair(uR, hR);
             Pair(uL, uR); Pair(lL, lR); Pair(hL, hR);
+
+            var sw = _rig.sword != null ? _rig.sword : FindPart("Sword_R");
+            if (sw != null)
+            {
+                Pair(sw, hR);
+                Pair(sw, lR);
+                Pair(sw, uR);
+                Pair(sw, _rig.torso);
+                Pair(sw, _rig.head);
+            }
         }
 
         void IgnoreLegChain(in PuppetRig.Leg leg)

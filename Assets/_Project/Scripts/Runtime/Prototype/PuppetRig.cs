@@ -66,6 +66,9 @@ namespace PuppetMaster.Prototype
         public Leg left;
         public Leg right;
 
+        [Header("Weapon")]
+        public Rigidbody sword;
+
         [Header("Reference values (captured by the builder)")]
         public float standingPelvisHeight = 1.06f;
         public float standingHeadHeight = 1.79f;
