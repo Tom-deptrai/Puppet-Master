@@ -8,6 +8,45 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Refine arm posture and increase puppet responsiveness
+
+Chỉnh sửa hình dáng cánh tay tự nhiên và tăng tốc độ phản ứng của toàn bộ puppet ~1.5x:
+
+### 1. Sửa Hình Dáng Cánh Tay (Natural Arm Posture & Physics Joint Limits)
+- **Chuẩn hoá tư thế thẳng / cong nhẹ tự nhiên:**
+  - Thay đổi hệ toạ độ authored cho cả cánh tay phải (Right Arm cầm kiếm) và cánh tay trái (Left Arm):
+    - Khớp vai $\to$ Cánh tay trên (Upper Arm) $\to$ Khuỷu tay (Elbow) $\to$ Cẳng tay (Forearm) $\to$ Bàn tay (Hand) tạo thành một đường thẳng vươn về phía trước - chúc nhẹ xuống tự nhiên (độ dốc đồng hướng, góc lệch giữa upper arm và forearm chỉ ~7° thay vì gập nhọn chữ V như trước).
+    - Toạ độ Right Arm: UpperArm tại $(0.12, 1.36, -0.245)$, Elbow tại $(0.22, 1.26, -0.238)$, Forearm tại $(0.32, 1.18, -0.226)$, Wrist tại $(0.42, 1.10, -0.215)$, Hand tại $(0.46, 1.07, -0.210)$.
+  - **Giới hạn góc khớp khuỷu tay (`BendElbow`):**
+    - Đặt `lowFight: -8f`, `highFight: 45f` (thay vì 135° gập sâu không tự nhiên), lò xo giữ tư thế `spring: 800f / 350f`.
+    - Giữ trọn vẹn joint vật lý và tính năng xoay co duỗi khi đâm kiếm / vung chém, nhưng loại bỏ hoàn toàn khả năng bị co gập biến dạng hay tạo góc kỳ quặc.
+  - **Cân chỉnh Weapon Physics (Kiếm):**
+    - Bàn tay cầm kiếm đặt tại cao độ chuẩn $Y = 1.07\text{m}$, lưỡi kiếm hướng thẳng về phía ngực đối thủ với góc nghiêng tự nhiên (`bladeDir = Vector3(facing * 0.85, 0.45, -0.08)`).
+
+### 2. Tăng Tốc Độ Phản Ứng Toàn Bộ Puppet (~1.5x Responsiveness)
+Tăng đồng bộ toàn chuỗi từ Input Filter, Controller Smoothing, đến Physics Springs/Dampers (tuân thủ Critical Damping $c \propto \sqrt{k}$ để tăng tốc mà không gây giật hay rung lắc):
+- **Input Speeds (`PuppetRopeInput.cs`):**
+  - `tensionRiseSpeed`: $12 \to 18$ (1.5x).
+  - `tensionFallSpeed`: $10 \to 15$ (1.5x).
+  - `depthSpeed`: $9 \to 13.5$ (1.5x).
+  - `armSpeed`: $16 \to 24$ (1.5x), `armReturnSpeed`: $5.5 \to 8$.
+- **Controller Smoothing (`PuppetRopeController.cs`):**
+  - `tensionSmoothing`: $45 \to 65$ (~1.45x).
+  - `depthSmoothing`: $30 \to 45$ (1.5x).
+  - `armSmoothing`: $35 \to 50$ (~1.43x).
+- **Physics Drives & Limits:**
+  - `legStandSpring`: $7200 \to 10800$, `legDamper`: $340 \to 420$, `legSlackSpring`: $900 \to 1350$.
+  - `pelvisStandSpring`: $10500 \to 15500$, `pelvisDamper`: $540 \to 670$, `pelvisSlackSpring`: $1200 \to 1800$.
+  - `spineStandSpring`: $7200 \to 10800$, `spineDamper`: $340 \to 420$, `spineSlackSpring`: $1500 \to 2250$.
+  - `torsoUprightAssist`: $38 \to 55$, `torsoUprightDamping`: $12 \to 16$.
+  - `ropePull`: $45 \to 65$.
+  - `plane.zDrive`: `positionSpring` $8000 \to 12000$, `positionDamper` $350 \to 450$.
+- **Kết quả đo kiểm vật lý (Internal Probe):**
+  - Thời gian đạt 80% biên độ nghiêng (forward/backward lean): từ ~0.30s giảm xuống còn **0.196s** (tăng tốc độ phản ứng 1.53x).
+  - Khôi phục đứng/ngồi (stand/crouch recovery) và phản ứng Inward/Outward nhanh hơn rõ rệt, duy trì độ đầm, quán tính vật lý và không hề bị rung/nổ joint.
+
+---
+
 ## 2026-09-04 — Unify two thumb body and sword control
 
 Hợp nhất hệ thống điều khiển ngang đối xứng dựa trên cả hai ngón cái (2-Thumb Control) để điều khiển đồng thời Full-Body Depth Lean và Sword Arm:

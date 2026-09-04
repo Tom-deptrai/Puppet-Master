@@ -145,7 +145,7 @@ namespace PuppetMaster.Editor
             plane.zMotion = ConfigurableJointMotion.Limited; // allows full-body depth lean swing
             plane.linearLimit = new SoftJointLimit { limit = 0.55f };
             plane.linearLimitSpring = new SoftJointLimitSpring { spring = 6000f, damper = 150f };
-            plane.zDrive = new JointDrive { positionSpring = 8000f, positionDamper = 350f, maximumForce = 60000f };
+            plane.zDrive = new JointDrive { positionSpring = 12000f, positionDamper = 450f, maximumForce = 65000f };
 
             plane.angularXMotion = ConfigurableJointMotion.Limited; // depth lean
             plane.angularYMotion = ConfigurableJointMotion.Locked;  // NO yaw
@@ -305,25 +305,24 @@ namespace PuppetMaster.Editor
             if (isRight)
             {
                 // Right arm: Holds sword forward in front of body.
-                // Shoulder is at shoulderZ (-0.25m), flared outside torso box (ends at -0.17m).
-                // Elbow is positioned forward and laterally with clear gap.
-                // Forearm points forward-upward, hand in front of chest.
-                uArmPos = new Vector3(Fwd(0.09f), 1.35f, shoulderZ * 1.02f);
-                elbowPos = new Vector3(Fwd(0.16f), 1.23f, shoulderZ * 0.96f);
-                lArmPos = new Vector3(Fwd(0.28f), 1.33f, shoulderZ * 0.82f);
-                wristPos = new Vector3(Fwd(0.36f), 1.40f, shoulderZ * 0.70f);
-                handPos = new Vector3(Fwd(0.40f), 1.43f, shoulderZ * 0.64f);
+                // Shoulder is at shoulderZ (-0.25m), flared outside torso box.
+                // Upper arm, elbow, forearm, and hand form a nearly straight, gently curved line.
+                // No sharp acute bend at elbow.
+                uArmPos = new Vector3(Fwd(0.12f), 1.36f, shoulderZ * 0.98f);
+                elbowPos = new Vector3(Fwd(0.22f), 1.26f, shoulderZ * 0.95f);
+                lArmPos = new Vector3(Fwd(0.32f), 1.18f, shoulderZ * 0.91f);
+                wristPos = new Vector3(Fwd(0.42f), 1.10f, shoulderZ * 0.86f);
+                handPos = new Vector3(Fwd(0.46f), 1.07f, shoulderZ * 0.84f);
             }
             else
             {
                 // Left arm: Natural guard/balance pose.
-                // Shoulder flared at shoulderZ (+0.25m), elbow clear of torso,
-                // forearm flexed forward-upward protecting chest/head.
-                uArmPos = new Vector3(Fwd(0.07f), 1.36f, shoulderZ * 1.02f);
-                elbowPos = new Vector3(Fwd(0.14f), 1.25f, shoulderZ * 0.98f);
-                lArmPos = new Vector3(Fwd(0.22f), 1.34f, shoulderZ * 0.86f);
-                wristPos = new Vector3(Fwd(0.28f), 1.41f, shoulderZ * 0.76f);
-                handPos = new Vector3(Fwd(0.31f), 1.44f, shoulderZ * 0.70f);
+                // Co-linear forward-downward natural extension with subtle gentle curve.
+                uArmPos = new Vector3(Fwd(0.10f), 1.37f, shoulderZ * 0.98f);
+                elbowPos = new Vector3(Fwd(0.19f), 1.28f, shoulderZ * 0.95f);
+                lArmPos = new Vector3(Fwd(0.28f), 1.21f, shoulderZ * 0.91f);
+                wristPos = new Vector3(Fwd(0.36f), 1.15f, shoulderZ * 0.86f);
+                handPos = new Vector3(Fwd(0.40f), 1.12f, shoulderZ * 0.84f);
             }
 
             var uArm = Part($"UpperArm_{suffix}", PrimitiveType.Capsule, uArmPos, new Vector3(0.075f, 0.12f, 0.075f), 1.8f, mArm, parent, 1.8f);
@@ -340,10 +339,11 @@ namespace PuppetMaster.Editor
             var hand = Part($"Hand_{suffix}", PrimitiveType.Cube, handPos, new Vector3(0.07f, 0.07f, 0.07f), 0.6f, mHand, parent, 2.5f);
 
             // Elbow: Hinge in sagittal/fight plane. Allows forward guard extension/flexion.
-            var elbow = BendElbow(lArm, uArm, elbowPos, lowFight: -10f, highFight: 135f, depth: 20f, spring: isRight ? 750f : 280f);
+            // Limited to -8..45 deg so elbow never folds acutely into an unnatural angle.
+            var elbow = BendElbow(lArm, uArm, elbowPos, lowFight: -8f, highFight: 45f, depth: 18f, spring: isRight ? 800f : 350f);
 
-            // Wrist: Keeps hand firmly at the end of the forearm in guard
-            var wrist = Bend(hand, lArm, wristPos, fight: 35f, depth: 25f, driven: false, passiveSpring: isRight ? 600f : 240f);
+            // Wrist: Keeps hand firmly aligned with the forearm in guard
+            var wrist = Bend(hand, lArm, wristPos, fight: 25f, depth: 20f, driven: false, passiveSpring: isRight ? 650f : 260f);
 
             return (uArm, lArm, hand, elbow, wrist);
         }
@@ -354,8 +354,8 @@ namespace PuppetMaster.Editor
         {
             Vector3 gripPos = hand.transform.position;
 
-            // Blade direction: points forward toward opponent (+facing) and angled ~25 deg above horizontal
-            Vector3 bladeDir = new Vector3(facing * 0.85f, 0.50f, -0.15f).normalized;
+            // Blade direction: points forward toward opponent (+facing) and angled slightly upward
+            Vector3 bladeDir = new Vector3(facing * 0.85f, 0.45f, -0.08f).normalized;
             Quaternion swordRot = Quaternion.FromToRotation(Vector3.up, bladeDir);
 
             var swordGo = new GameObject("Sword_R");

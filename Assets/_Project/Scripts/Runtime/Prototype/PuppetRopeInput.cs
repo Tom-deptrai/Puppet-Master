@@ -36,13 +36,13 @@ namespace PuppetMaster.Prototype
         [Min(0f)] public float horizontalDeadzonePixels = 16f;
 
         [Header("Arm Response (units per second)")]
-        [Min(0.1f)] public float armSpeed = 16f;
-        [Min(0.1f)] public float armReturnSpeed = 5.5f;
+        [Min(0.1f)] public float armSpeed = 24f;
+        [Min(0.1f)] public float armReturnSpeed = 8f;
 
         [Header("Response (units per second)")]
-        [Min(0.1f)] public float tensionRiseSpeed = 12f;
-        [Min(0.1f)] public float tensionFallSpeed = 10f;
-        [Min(0.1f)] public float depthSpeed = 9f;
+        [Min(0.1f)] public float tensionRiseSpeed = 18f;
+        [Min(0.1f)] public float tensionFallSpeed = 15f;
+        [Min(0.1f)] public float depthSpeed = 13.5f;
 
         [Header("Keyboard test bindings (desktop debug)")]
         public Key leftKey = Key.A;

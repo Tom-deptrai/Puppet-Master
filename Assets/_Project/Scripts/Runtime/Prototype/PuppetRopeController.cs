@@ -24,8 +24,8 @@ namespace PuppetMaster.Prototype
     {
         [Header("Tension response — Phase 1.2 (fast)")]
         [Range(0.3f, 4f)] public float tensionGamma = 1.2f;
-        [Min(1f)] public float tensionSmoothing = 45f;
-        [Min(1f)] public float depthSmoothing = 30f;
+        [Min(1f)] public float tensionSmoothing = 65f;
+        [Min(1f)] public float depthSmoothing = 45f;
 
         [Header("Squat — driven by COMBINED tension (symmetric)")]
         [Range(0f, 1f)] public float perSideSquatWeight = 0.22f;
@@ -33,10 +33,10 @@ namespace PuppetMaster.Prototype
         public float hipSquatDeg = 62f;
         public float kneeSquatDeg = -118f;
         public float ankleSquatDeg = 55f;
-        public float legSlackSpring = 900f;
-        public float legStandSpring = 7200f;
-        public float legDamper = 340f;
-        public float legMaxForce = 46000f;
+        public float legSlackSpring = 1350f;
+        public float legStandSpring = 10800f;
+        public float legDamper = 420f;
+        public float legMaxForce = 55000f;
         [Tooltip("Ankle drive is a fraction of the knee/hip drive so it follows rather than fights.")]
         [Range(0.05f, 1f)] public float ankleSpringScale = 0.35f;
 
@@ -59,24 +59,24 @@ namespace PuppetMaster.Prototype
         [Range(0f, 1f)] public float depthHipFollow = 0.25f;
 
         [Header("Pelvis → world drive (carries the 2-axis lean)")]
-        public float pelvisSlackSpring = 1200f;
-        public float pelvisStandSpring = 10500f;
-        public float pelvisDamper = 540f;
-        public float pelvisMaxForce = 95000f;
+        public float pelvisSlackSpring = 1800f;
+        public float pelvisStandSpring = 15500f;
+        public float pelvisDamper = 670f;
+        public float pelvisMaxForce = 120000f;
 
         [Header("Spine + neck drive")]
-        public float spineSlackSpring = 1500f;
-        public float spineStandSpring = 7200f;
-        public float spineDamper = 340f;
-        public float spineMaxForce = 32000f;
+        public float spineSlackSpring = 2250f;
+        public float spineStandSpring = 10800f;
+        public float spineDamper = 420f;
+        public float spineMaxForce = 42000f;
 
         [Header("Torso balance assist (small AddTorque)")]
-        public float torsoUprightAssist = 38f;
-        public float torsoUprightDamping = 12f;
-        public float maxAssistTorque = 150f;
+        public float torsoUprightAssist = 55f;
+        public float torsoUprightDamping = 16f;
+        public float maxAssistTorque = 180f;
 
         [Header("Rope pull — small downward force at each foot (plants it on the rail)")]
-        public float ropePull = 45f;
+        public float ropePull = 65f;
 
         [Header("Physics solver (runtime only — never touches ProjectSettings)")]
         [Min(1)] public int solverIterations = 30;
@@ -94,13 +94,13 @@ namespace PuppetMaster.Prototype
         [Header("Arm Combat Control — Right Arm (Sword)")]
         public float armExtendPitchGain = 38f;     // shoulder reaches forward
         public float armSlashYawGain = 34f;        // shoulder slashes across inward
-        public float armElbowExtendGain = 50f;     // elbow opens / extends forward
-        public float armActiveSpring = 850f;
-        public float armRelaxedSpring = 400f;
-        public float armDamper = 45f;
+        public float armElbowExtendGain = 24f;     // elbow opens / extends forward
+        public float armActiveSpring = 900f;
+        public float armRelaxedSpring = 500f;
+        public float armDamper = 50f;
         public float armMaxForce = 35000f;
         public float armSwipeImpulseScale = 16f;
-        [Min(1f)] public float armSmoothing = 35f;
+        [Min(1f)] public float armSmoothing = 50f;
 
         // ---- input state ----
         public float LeftInput { get; private set; }
