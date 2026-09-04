@@ -891,3 +891,39 @@ trong Unity (Preferences/Project Settings) hoặc chờ bản CLI ổn định h
   - Lean trước/sau (A/L) và nghiêng sâu In/Out (Q/E): kiếm chuyển động theo tự nhiên, truyền quán tính và dao động thực tế vào cánh tay.
   - Chuyển hướng nhanh: kiếm có đà nhưng không bay khỏi tay, không joint explosion.
   - Đã kiểm tra đối xứng gương trên cả `PlayerSide.Left` và `PlayerSide.Right`.
+
+---
+
+## 2026-09-04 — Add weapon collision and impact prototype
+
+### Mục tiêu hoàn thành
+Khởi động prototype vật lý chiến đấu: Weapon Collision + Physical Impact giữa Player và Target thứ hai mà không thêm HP, damage system, KO, AI hay VFX lớn.
+
+### Thay đổi đã thực hiện
+1. **Target thứ hai (`Target_Dummy`):**
+   - Đặt trên thanh ray riêng `Rail_Right` tại $X = +0.58m$ (khoảng cách đấu giữa 2 puppet là $1.16m$, ở thế thủ cách nhau ~6cm an toàn).
+   - Cấu trúc đầy đủ Rigidbody, Collider và Joint (`Target_Pelvis`, `Target_Torso`, `Target_Head`, `Target_UpperArm`, `Target_LowerArm`, `Target_Hand`, `Target_UpperLeg`, `Target_LowerLeg`, `Target_Foot`).
+   - Khớp có lò xo thụ động (`passiveSpring` 1200f – 5500f) giúp target tự đứng vững trên ray, phản ứng giật lùi khi bị đánh và tự hồi phục về tư thế đứng ban đầu mà không bị sụp hay nổ khớp.
+   - Sử dụng bảng màu xám/thép đối lập để phân biệt rõ với Player.
+2. **Weapon Collision (`SwordCollisionHandler.cs`):**
+   - Gắn trực tiếp lên `Sword_R` (có `BoxCollider` và `Rigidbody` ContinuousDynamic).
+   - Dùng `OnCollisionEnter` bắt va chạm vật lý thực: trích xuất điểm tiếp xúc (`contact.point`), pháp tuyến (`contact.normal`), nhận diện tên body part bị trúng.
+   - Đọc vận tốc tiếp điểm của kiếm qua `swordRb.GetPointVelocity(contact.point)` kết hợp vận tốc tương đối `relVelocity`.
+3. **Tính `ImpactStrength` & Phân loại:**
+   - Công thức: $\text{ImpactStrength} = m_{\text{sword}} \times \max(|v_{\text{rel}} \cdot n|, 0.5 \times |v_{\text{rel}}|)$.
+   - Ngưỡng Inspector:
+     - **WEAK**: $< 2.0$ (chạm nhẹ, tiếp xúc chậm).
+     - **MEDIUM**: $2.0 – 5.0$ (vung kiếm tốc độ vừa).
+     - **STRONG**: $\ge 5.0$ (vung nhanh có đà lớn).
+4. **Hit Reaction vật lý:**
+   - Truyền xung lực `AddForceAtPosition(pushDir * impulseMag, contact.point, ForceMode.Impulse)` vào đúng vị trí tiếp xúc của Rigidbody bị đánh.
+   - Độ lớn xung lực tỉ lệ với `ImpactStrength` (có clamp giới hạn an toàn), cú đánh mạnh tạo phản ứng rõ rệt hơn cú nhẹ, không teleport, không animation, không nổ joint.
+5. **Debug HUD:**
+   - Cập nhật `PuppetDebugHUD` hiển thị body part vừa trúng, relative velocity, ImpactStrength và phân loại (WEAK / MEDIUM / STRONG).
+6. **Kiểm thử Play Mode:**
+   - Xác nhận va chạm vật lý thực hoạt động trên `Target_Torso`, `Target_LowerArm_R`, `Target_Hand_R`.
+   - Chạm nhẹ được phân loại WEAK (0.83 – 1.47 m/s, strength 0.50 – 1.32).
+   - Vung vừa được phân loại MEDIUM (2.82 – 4.72 m/s, strength 2.61 – 4.98).
+   - Vung mạnh được phân loại STRONG (6.21 m/s, strength 7.44).
+   - Target nhận impulse nảy giật lùi đúng hướng, không nổ khớp, chân giữ chặt trên ray.
+   - Project Health Check PASSED 100%.

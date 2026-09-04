@@ -63,7 +63,7 @@ namespace PuppetMaster.Prototype
                     "RIGHT THUMB ▶   ↕rope R  ↔xR", _small);
             }
 
-            var panel = new Rect(12, 36, 364, 252);
+            var panel = new Rect(12, 36, 364, 320);
             GUI.color = new Color(0, 0, 0, 0.65f);
             GUI.DrawTexture(panel, _px);
             GUI.color = Color.white;
@@ -100,6 +100,26 @@ namespace PuppetMaster.Prototype
                 float sep = controller.FootSeparation;
                 float standSep = rig != null ? rig.standingFootSeparation : 0.32f;
                 GUILayout.Label($"Foot separation : <b>{sep:0.00}</b> m  (stand {standSep:0.00})", _label);
+
+                // ---- Combat Physics Prototype Info ----
+                var swordHandler = rig != null ? rig.swordCollision : null;
+                if (swordHandler == null && rig != null && rig.sword != null)
+                    swordHandler = rig.sword.GetComponent<SwordCollisionHandler>();
+
+                if (swordHandler != null && swordHandler.HasImpact)
+                {
+                    var hit = swordHandler.LatestImpact;
+                    float age = Time.time - hit.time;
+                    string catColor = hit.category == ImpactCategory.Strong ? "#ff4444" :
+                                      hit.category == ImpactCategory.Medium ? "#ffbb33" : "#aaaaaa";
+                    GUILayout.Label(
+                        $"<b>LAST HIT ({age:0.0}s ago):</b> {hit.bodyPart} | <b>{hit.relativeSpeed:0.00} m/s</b>\n" +
+                        $"Strength: <b>{hit.impactStrength:0.00}</b>  [<color={catColor}><b>{hit.category.ToString().ToUpper()}</b></color>]", _label);
+                }
+                else
+                {
+                    GUILayout.Label("<b>COMBAT:</b> No hits yet (swing sword at target)", _small);
+                }
             }
 
             GUILayout.Label("<size=11>A/L rope · Q/E depth · J/K sword arm · 2-thumb: depth=(xL+xR)/2 · sword=(xR-xL)/2</size>", _small);

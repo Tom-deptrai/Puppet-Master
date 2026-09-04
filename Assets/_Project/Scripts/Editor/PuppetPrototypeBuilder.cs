@@ -35,7 +35,7 @@ namespace PuppetMaster.Editor
         const string ScenePath = "Assets/_Project/Scenes/PuppetPrototype.unity";
         const string MatDir = "Assets/_Project/Materials/Prototype";
 
-        const float ArenaOffset = 1.0f;
+        const float ArenaOffset = 0.58f;
         const float StanceHalf = 0.16f;
         const float FootY = 0.085f;
         const float FootHeight = 0.07f;
@@ -45,9 +45,12 @@ namespace PuppetMaster.Editor
 
         const float RailHeight = 0.05f;
         const float RailWidth = 0.15f;
-        const float RailLength = 1.50f;
+        const float RailLength = 1.05f;
         const float RailTopY = FootY - FootHeight * 0.5f; // 0.050f
         const float RailCenterY = RailTopY - RailHeight * 0.5f; // 0.025f
+
+        [MenuItem("Puppet Master/Phase 1/Build Combat Prototype (Player vs Target)")]
+        public static void BuildCombat() => Build(PlayerSide.Left);
 
         [MenuItem("Puppet Master/Phase 1/Build Puppet Prototype — Left side")]
         public static void BuildLeft() => Build(PlayerSide.Left);
@@ -77,8 +80,14 @@ namespace PuppetMaster.Editor
             Material mHilt = Mat("Weapon_Hilt", new Color(0.25f, 0.20f, 0.16f));
             Material mGuard = Mat("Weapon_Guard", new Color(0.75f, 0.62f, 0.35f));
 
-            ConfigureCameraAndLight(originX, facing);
-            BuildEnvironment(originX, mGround, mRail, mSlot);
+            Material mTBody = Mat("Target_Body", new Color(0.38f, 0.45f, 0.52f));
+            Material mTLimb = Mat("Target_Arm", new Color(0.32f, 0.38f, 0.44f));
+            Material mTLeg = Mat("Target_Leg", new Color(0.26f, 0.30f, 0.36f));
+            Material mTFoot = Mat("Target_Foot", new Color(0.48f, 0.52f, 0.58f));
+            Material mTFace = Mat("Target_Face", new Color(0.85f, 0.35f, 0.30f));
+
+            ConfigureCameraAndLight();
+            BuildEnvironment(ArenaOffset, mGround, mRail, mSlot);
 
             var puppetGo = new GameObject($"Puppet_{side}");
             var puppet = puppetGo.transform;
@@ -177,6 +186,8 @@ namespace PuppetMaster.Editor
             rig.pelvis = pelvis; rig.torso = torso; rig.head = head;
             rig.spine = spine; rig.neck = neck; rig.pelvisPlaneJoint = plane;
             rig.sword = sword;
+            rig.swordCollision = sword != null ? sword.GetComponent<SwordCollisionHandler>() : null;
+            if (rig.swordCollision != null) rig.swordCollision.SetOwner(rig);
             rig.standingPelvisHeight = pelvis.position.y;
             rig.standingHeadHeight = head.position.y;
             rig.standingFootSeparation = Mathf.Abs(footL.position.x - footR.position.x);
@@ -214,6 +225,11 @@ namespace PuppetMaster.Editor
             MakeRope("Rope_L", ropes, controller, attachL, railSlotL, belowL, isLeft: true, mRope);
             MakeRope("Rope_R", ropes, controller, attachR, railSlotR, belowR, isLeft: false, mRope);
 
+            // ---- target dummy (physical test dummy on opposite rail) ----
+            float targetOriginX = -originX;
+            float targetFacing = -facing;
+            BuildTargetDummy(targetOriginX, targetFacing, mTBody, mTLimb, mTLeg, mTFoot, mTFace);
+
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -222,11 +238,11 @@ namespace PuppetMaster.Editor
             Selection.activeGameObject = puppetGo;
 
             Debug.Log(
-                $"[Phase 1.2] Built PuppetPrototype.unity  (side = {side}, faces {(facing > 0 ? "+X" : "-X")})\n" +
-                "  4-axis: tension L/R, fwd/back = tension diff, in/out = averaged horizontal input\n" +
-                "  joints axis=(1,0,0): angZ = fight plane, angX = depth, angY = yaw LOCKED\n" +
-                "  ropes run foot -> rail slot -> below the rail -> off the bottom of the screen\n" +
-                "  Play: A / L / Space (rope) · Q / E (inward/outward) · drag ↓ tension ↔ depth");
+                $"[Combat Prototype] Built PuppetPrototype.unity  (Player {side} vs Target Dummy)\n" +
+                "  Combat spacing: ArenaOffset = 0.58m | Separate rails\n" +
+                "  Sword: BoxCollider + Rigidbody + SwordCollisionHandler\n" +
+                "  Physical Impact: Weak / Medium / Strong with impulse force\n" +
+                "  Controls: A/L lean, Q/E depth, J/K sword arm thrust/slash");
         }
 
         public static void BuildFromCommandLine()
@@ -237,17 +253,16 @@ namespace PuppetMaster.Editor
 
         // --------------------------------------------------------------------
 
-        static void ConfigureCameraAndLight(float originX, float facing)
+        static void ConfigureCameraAndLight()
         {
             var cam = Camera.main;
             if (cam != null)
             {
-                // 3/4 view: ahead of the puppet (opponent side) + a little above,
-                // so BOTH forward/back and inward/outward lean read clearly.
-                Vector3 camPos = new Vector3(originX + facing * 1.5f, 1.62f, -4.7f);
-                Vector3 look = new Vector3(originX - facing * 0.05f, 1.02f, 0.05f);
+                // 3/4 view centered between both puppets, capturing full combat arena
+                Vector3 camPos = new Vector3(0f, 1.60f, -4.2f);
+                Vector3 look = new Vector3(0f, 1.15f, 0.05f);
                 cam.transform.SetPositionAndRotation(camPos, Quaternion.LookRotation(look - camPos));
-                cam.fieldOfView = 44f;
+                cam.fieldOfView = 42f;
                 cam.clearFlags = CameraClearFlags.SolidColor;
                 cam.backgroundColor = new Color(0.16f, 0.17f, 0.19f);
                 cam.nearClipPlane = 0.05f;
@@ -256,13 +271,13 @@ namespace PuppetMaster.Editor
             var sun = Object.FindFirstObjectByType<Light>();
             if (sun != null)
             {
-                sun.transform.rotation = Quaternion.Euler(48f, 40f * -facing, 0f);
+                sun.transform.rotation = Quaternion.Euler(48f, -40f, 0f);
                 sun.intensity = 1.2f;
                 sun.shadows = LightShadows.Soft;
             }
         }
 
-        static void BuildEnvironment(float originX, Material ground, Material rail, Material groove)
+        static void BuildEnvironment(float originOffset, Material ground, Material rail, Material groove)
         {
             var g = GameObject.CreatePrimitive(PrimitiveType.Plane);
             g.name = "Ground";
@@ -270,20 +285,26 @@ namespace PuppetMaster.Editor
             g.transform.localScale = new Vector3(6f, 1f, 2f);
             g.GetComponent<MeshRenderer>().sharedMaterial = ground;
 
+            CreateRail("Rail_Left", -originOffset, rail, groove);
+            CreateRail("Rail_Right", originOffset, rail, groove);
+        }
+
+        static void CreateRail(string name, float x, Material railMat, Material grooveMat)
+        {
             var r = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            r.name = "Rail";
+            r.name = name;
             Object.DestroyImmediate(r.GetComponent<BoxCollider>());
-            r.transform.position = new Vector3(originX, RailCenterY, 0f);
+            r.transform.position = new Vector3(x, RailCenterY, 0f);
             r.transform.localScale = new Vector3(RailLength, RailHeight, RailWidth);
-            r.GetComponent<MeshRenderer>().sharedMaterial = rail;
+            r.GetComponent<MeshRenderer>().sharedMaterial = railMat;
 
             var gr = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            gr.name = "Rail_Groove";
+            gr.name = name + "_Groove";
             Object.DestroyImmediate(gr.GetComponent<BoxCollider>());
             gr.transform.SetParent(r.transform, worldPositionStays: false);
             gr.transform.localPosition = new Vector3(0f, 0.501f, 0f);
             gr.transform.localScale = new Vector3(1f, 0.02f, 0.28f);
-            gr.GetComponent<MeshRenderer>().sharedMaterial = groove;
+            gr.GetComponent<MeshRenderer>().sharedMaterial = grooveMat;
         }
 
         /// <summary>
@@ -496,6 +517,13 @@ namespace PuppetMaster.Editor
             rb.solverIterations = 48;
             rb.solverVelocityIterations = 24;
 
+            // Combat Physics: SwordCollisionHandler
+            var handler = swordGo.AddComponent<SwordCollisionHandler>();
+            handler.weakThreshold = 2.0f;
+            handler.mediumThreshold = 5.0f;
+            handler.impulseForceScale = 1.8f;
+            handler.maxImpulse = 35.0f;
+
             // ConfigurableJoint to Hand_R
             var j = swordGo.AddComponent<ConfigurableJoint>();
             j.connectedBody = hand;
@@ -515,6 +543,157 @@ namespace PuppetMaster.Editor
             j.configuredInWorldSpace = false;
 
             return rb;
+        }
+
+        static GameObject BuildTargetDummy(float originX, float facing,
+            Material mBody, Material mLimb, Material mLeg, Material mFoot, Material mFace)
+        {
+            float Fwd(float d) => originX + facing * d;
+
+            var targetGo = new GameObject("Target_Dummy");
+            var target = targetGo.transform;
+
+            // Torso column
+            var pelvis = Part("Target_Pelvis", PrimitiveType.Cube, new Vector3(Fwd(0f), 1.06f, 0f), new Vector3(0.24f, 0.20f, 0.30f), 10f, mBody, target, 2.4f);
+            var torso = Part("Target_Torso", PrimitiveType.Cube, new Vector3(Fwd(0f), 1.40f, 0f), new Vector3(0.26f, 0.44f, 0.34f), 13f, mBody, target, 2.4f);
+            var head = Part("Target_Head", PrimitiveType.Sphere, new Vector3(Fwd(0f), 1.79f, 0f), new Vector3(0.22f, 0.22f, 0.22f), 2.6f, mBody, target, 1.8f);
+
+            var face = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            face.name = "Target_Face";
+            Object.DestroyImmediate(face.GetComponent<Collider>());
+            face.transform.SetParent(head.transform, false);
+            face.transform.localPosition = new Vector3(facing * 0.12f, 0f, 0f);
+            face.transform.localScale = new Vector3(0.06f, 0.09f, 0.13f);
+            face.GetComponent<MeshRenderer>().sharedMaterial = mFace;
+
+            // Arms (passive guard posture)
+            var (uArmL, lArmL, handL, shoulderL, elbowL, wristL) = BuildTargetArm("L", ShoulderZ, mLimb, mLimb, mFoot, target, torso, facing, originX);
+            var (uArmR, lArmR, handR, shoulderR, elbowR, wristR) = BuildTargetArm("R", -ShoulderZ, mLimb, mLimb, mFoot, target, torso, facing, originX);
+
+            // Legs: lead foot at +facing, rear foot at -facing
+            var uLegL = Part("Target_UpperLeg_L", PrimitiveType.Capsule, new Vector3(Fwd(-0.07f), 0.76f, 0f), new Vector3(0.12f, 0.22f, 0.12f), 6.5f, mLeg, target, 1.6f);
+            var lLegL = Part("Target_LowerLeg_L", PrimitiveType.Capsule, new Vector3(Fwd(-0.12f), 0.32f, 0f), new Vector3(0.11f, 0.21f, 0.11f), 4.5f, mLeg, target, 2.4f);
+            var footL = Part("Target_Foot_L", PrimitiveType.Cube, new Vector3(Fwd(-StanceHalf), FootY, 0f), new Vector3(FootLength, FootHeight, FootWidth), 4.2f, mFoot, target, 3.0f);
+            var uLegR = Part("Target_UpperLeg_R", PrimitiveType.Capsule, new Vector3(Fwd(0.07f), 0.76f, 0f), new Vector3(0.12f, 0.22f, 0.12f), 6.5f, mLeg, target, 1.6f);
+            var lLegR = Part("Target_LowerLeg_R", PrimitiveType.Capsule, new Vector3(Fwd(0.12f), 0.32f, 0f), new Vector3(0.11f, 0.21f, 0.11f), 4.5f, mLeg, target, 2.4f);
+            var footR = Part("Target_Foot_R", PrimitiveType.Cube, new Vector3(Fwd(StanceHalf), FootY, 0f), new Vector3(FootLength, FootHeight, FootWidth), 4.2f, mFoot, target, 3.0f);
+
+            // Joints: firm spring drives for stable standing posture
+            Bend(torso, pelvis, new Vector3(Fwd(0f), 1.17f, 0f), fight: 65f, depth: 45f, driven: false, passiveSpring: 3500f);
+            Bend(head, torso, new Vector3(Fwd(0f), 1.64f, 0f), fight: 50f, depth: 45f, driven: false, passiveSpring: 1200f);
+
+            Bend(uLegL, pelvis, new Vector3(Fwd(-0.035f), 0.97f, 0f), fight: 90f, depth: 45f, driven: false, passiveSpring: 4200f);
+            Bend(lLegL, uLegL, new Vector3(Fwd(-0.11f), 0.54f, 0f), fight: 110f, depth: 15f, driven: false, passiveSpring: 5500f);
+            Bend(footL, lLegL, new Vector3(Fwd(-0.15f), 0.11f, 0f), fight: 50f, depth: 35f, driven: false, passiveSpring: 3000f);
+            Bend(uLegR, pelvis, new Vector3(Fwd(0.035f), 0.97f, 0f), fight: 90f, depth: 45f, driven: false, passiveSpring: 4200f);
+            Bend(lLegR, uLegR, new Vector3(Fwd(0.11f), 0.54f, 0f), fight: 110f, depth: 15f, driven: false, passiveSpring: 5500f);
+            Bend(footR, lLegR, new Vector3(Fwd(0.15f), 0.11f, 0f), fight: 50f, depth: 35f, driven: false, passiveSpring: 3000f);
+
+            // Rail constraints for target feet
+            RailJoint(footL, new Vector3(Fwd(-StanceHalf), FootY, 0f));
+            RailJoint(footR, new Vector3(Fwd(StanceHalf), FootY, 0f));
+
+            // Pelvis plane joint
+            var plane = pelvis.gameObject.AddComponent<ConfigurableJoint>();
+            plane.connectedBody = null;
+            plane.autoConfigureConnectedAnchor = false;
+            plane.anchor = Vector3.zero;
+            plane.connectedAnchor = pelvis.position;
+            plane.axis = new Vector3(1f, 0f, 0f);
+            plane.secondaryAxis = new Vector3(0f, 1f, 0f);
+            plane.xMotion = ConfigurableJointMotion.Limited;
+            plane.linearLimit = new SoftJointLimit { limit = 0.25f };
+            plane.linearLimitSpring = new SoftJointLimitSpring { spring = 4000f, damper = 150f };
+            plane.yMotion = ConfigurableJointMotion.Free;
+            plane.zMotion = ConfigurableJointMotion.Limited;
+            plane.zDrive = new JointDrive { positionSpring = 8000f, positionDamper = 350f, maximumForce = 45000f };
+
+            plane.angularXMotion = ConfigurableJointMotion.Limited;
+            plane.angularYMotion = ConfigurableJointMotion.Locked;
+            plane.angularZMotion = ConfigurableJointMotion.Limited;
+            plane.lowAngularXLimit = new SoftJointLimit { limit = -45f };
+            plane.highAngularXLimit = new SoftJointLimit { limit = 45f };
+            plane.angularZLimit = new SoftJointLimit { limit = 65f };
+            plane.rotationDriveMode = RotationDriveMode.Slerp;
+            plane.slerpDrive = new JointDrive { positionSpring = 5000f, positionDamper = 300f, maximumForce = 45000f };
+            plane.projectionMode = JointProjectionMode.PositionAndRotation;
+            plane.projectionDistance = 0.05f;
+            plane.enablePreprocessing = false;
+            plane.configuredInWorldSpace = false;
+
+            // Ignore internal collisions
+            IgnoreTargetDummyCollisions(targetGo, pelvis, torso, head, uArmL, lArmL, handL, uArmR, lArmR, handR, uLegL, lLegL, footL, uLegR, lLegR, footR);
+
+            return targetGo;
+        }
+
+        static (Rigidbody uArm, Rigidbody lArm, Rigidbody hand, ConfigurableJoint shoulder, ConfigurableJoint elbow, ConfigurableJoint wrist) BuildTargetArm(
+            string suffix, float shoulderZ, Material mArm, Material mForearm, Material mHand,
+            Transform parent, Rigidbody torso, float facing, float originX)
+        {
+            float Fwd(float d) => originX + facing * d;
+            float z = Mathf.Sign(shoulderZ) * 0.17f;
+            Vector3 shoulderPt = new Vector3(Fwd(0f), 1.46f, z);
+
+            const float upperLen = 0.30f;
+            const float foreLen = 0.26f;
+            const float handLen = 0.055f;
+            const float armRadius = 0.050f;
+            const float foreRadius = 0.044f;
+
+            float upperFromDown = 20f;
+            float elbowBendDeg = 25f;
+            float foreFromDown = upperFromDown + elbowBendDeg;
+
+            Vector3 Dir(float degFromDown) => new Vector3(
+                facing * Mathf.Sin(degFromDown * Mathf.Deg2Rad),
+                -Mathf.Cos(degFromDown * Mathf.Deg2Rad),
+                0f);
+
+            Vector3 upperDir = Dir(upperFromDown);
+            Vector3 foreDir = Dir(foreFromDown);
+            Vector3 elbowPt = shoulderPt + upperDir * upperLen;
+            Vector3 wristPt = elbowPt + foreDir * foreLen;
+            Vector3 handPt = wristPt + foreDir * handLen;
+
+            var uArm = BoneSegment($"Target_UpperArm_{suffix}", shoulderPt, elbowPt, armRadius, 1.8f, mArm, parent, 1.8f);
+            var lArm = BoneSegment($"Target_LowerArm_{suffix}", elbowPt, wristPt, foreRadius, 1.4f, mForearm, parent, 2.0f);
+            var hand = Part($"Target_Hand_{suffix}", PrimitiveType.Cube, handPt, new Vector3(0.07f, 0.07f, 0.07f), 0.6f, mHand, parent, 2.5f);
+
+            JointCap($"Target_Deltoid_{suffix}", torso.transform, shoulderPt, armRadius * 2.3f, mArm);
+            JointCap($"Target_Elbow_{suffix}", lArm.transform, elbowPt, foreRadius * 2.1f, mArm);
+
+            var shoulder = Bend(uArm, torso, shoulderPt, fight: 60f, depth: 35f, driven: false, passiveSpring: 900f);
+            var elbow = Bend(lArm, uArm, elbowPt, fight: 60f, depth: 20f, driven: false, passiveSpring: 1200f);
+            var wrist = Bend(hand, lArm, wristPt, fight: 25f, depth: 20f, driven: false, passiveSpring: 400f);
+
+            return (uArm, lArm, hand, shoulder, elbow, wrist);
+        }
+
+        static void Pair(Rigidbody a, Rigidbody b)
+        {
+            if (a == null || b == null) return;
+            foreach (var x in a.GetComponentsInChildren<Collider>())
+            foreach (var y in b.GetComponentsInChildren<Collider>())
+                Physics.IgnoreCollision(x, y, true);
+        }
+
+        static void IgnoreTargetDummyCollisions(GameObject go,
+            Rigidbody pelvis, Rigidbody torso, Rigidbody head,
+            Rigidbody uAL, Rigidbody lAL, Rigidbody hL,
+            Rigidbody uAR, Rigidbody lAR, Rigidbody hR,
+            Rigidbody uLL, Rigidbody lLL, Rigidbody fL,
+            Rigidbody uLR, Rigidbody lLR, Rigidbody fR)
+        {
+            Pair(pelvis, torso);
+            Pair(torso, head);
+            Pair(pelvis, uLL); Pair(uLL, lLL); Pair(lLL, fL);
+            Pair(pelvis, uLR); Pair(uLR, lLR); Pair(lLR, fR);
+            Pair(torso, uAL); Pair(uAL, lAL); Pair(lAL, hL);
+            Pair(uAL, lAL); Pair(lAL, hL); Pair(uAL, hL);
+            Pair(torso, uAR); Pair(uAR, lAR); Pair(lAR, hR);
+            Pair(uAR, lAR); Pair(lAR, hR); Pair(uAR, hR);
+            Pair(uAL, uAR); Pair(lAL, lAR); Pair(hL, hR);
         }
 
         static ConfigurableJoint BendElbow(Rigidbody child, Rigidbody parent, Vector3 worldAnchor,
