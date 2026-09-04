@@ -8,6 +8,130 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Phase 1.2: Advanced 4-axis puppet control
+
+Hoàn thiện hệ điều khiển lõi trước khi thêm vũ khí. Báo cáo đầy đủ:
+[`PhaseReports/PHASE_01_2_REPORT.md`](PhaseReports/PHASE_01_2_REPORT.md).
+KHÔNG combat, KHÔNG vũ khí.
+
+### Đổi convention trục joint (nền tảng cho mọi thứ khác)
+
+Mọi ConfigurableJoint điều khiển giờ dựng với `axis=(1,0,0)`, `secondaryAxis=(0,1,0)`
+→ joint-space = identity → controller chỉ cần `targetRotation = Inverse(worldTarget)`
+(không còn conjugation mù mờ). Ba trục góc:
+
+- `angularZ` (world Z) = **mặt phẳng chiến đấu** (forward/back lean + squat) — Limited
+- `angularX` (world X) = **inward/outward** (depth lean) — Limited theo joint, khoá ở gối/bàn chân
+- `angularY` (world Y) = **yaw** — **KHOÁ CỨNG ở mọi joint** → puppet không bao giờ quay lưng
+
+### 1. Hệ 4 hướng (phần mới cốt lõi)
+
+- `tension L/R` (0..1) mỗi dây.
+- `combined tension` → **squat** (đối xứng cả hai chân).
+- `tension difference (R−L)` → **forward/backward lean** (+ = về phía đối thủ).
+- `average horizontal drag của 2 ngón` → **inward/outward lean** (+ = outward = nghiêng
+  về phía camera / −Z; screen-consistent cho cả hai side).
+- **Combine:** `leanWorld = AngleAxis(−facing·fbDeg, worldZ) * AngleAxis(−depthDeg, worldX)`
+  — hai phép quay 1-trục world tường minh, **không bao giờ có thành phần quanh world Y**
+  → diagonal (fwd+in/out) là một orientation thật, không có yaw ký sinh (đo được ≤ 1.6°).
+- Pelvis→world joint gánh `leanWorld`; spine follow 0.26, neck 0.15.
+
+### 2. Chống full-3D-ragdoll
+
+1. `angularY` (yaw) khoá cứng mọi joint.
+2. depth (`angularX`) chỉ mở ở pelvis/spine/neck/hip (±36–42°), nhỏ ở ankle (±12°),
+   **khoá ở knee (0°) và foot**.
+3. Pelvis khoá **z-position** (luôn ở mặt phẳng chiến đấu).
+4. Foot: mọi angular khoá cứng vào world (bắt vít phẳng), chỉ trượt X ±0.10 m.
+5. Depth là 1 DOF có kiểm soát, không phải twist tự do.
+
+### 3. Tốc độ phản ứng (~4×+)
+
+| | Phase 1.1 | Phase 1.2 |
+|---|---|---|
+| `tensionSmoothing` | 14 | **45** |
+| input rise / fall | 3.6 / 2.3 | **12 / 10** |
+| leg drive spring slack→stand | 240→2800 | **2600→7200** |
+| pelvis spring slack→stand | 2800→4600 | **5200→10500** |
+| spine spring slack→stand | 2200→3000 | **4200→7200** |
+| part `maxAngularVelocity` | 12 | **28** |
+| solver iters (per body) | 44 / 22 | **48 / 24** |
+
+Đo bằng probe nội bộ (`PuppetRopeController.BeginProbe/ProbeReport`):
+**phản ứng thấy được ~0.022–0.033 s**, **đạt 80% tư thế ~0.21–0.25 s** — trong mục tiêu
+(0.1 s / 0.25–0.4 s), vẫn có inertia (không snap).
+
+### 4. Crouch sâu hơn — nguyên nhân bug lớn
+
+**Bug:** hip và knee cùng drive `+` quanh world Z → chân cuộn như lò xo thay vì gập
+ép lại; knee kẹt ~60° dù target 138°; pelvis không xuống dưới ~58% và bị **jitter**
+(limit-cycle của drive tự đánh nhau).
+**Sửa:** `kneeSquatDeg = -118` (dấu **ngược** hip) → chân gập ép thật, gravity hỗ trợ,
+pelvis xuống **~47–54%**, jitter biến mất (`vel` slack 0.15–0.24 → **0.04–0.09**).
+`ankleSpringScale = 0.35` (ankle theo chứ không chống). Kinematics squat:
+hip +62° / knee −118° / ankle +55° → bàn chân giữ phẳng (tổng ≈ 0).
+
+### 5. Rope visual mới
+
+Không còn dây lên trời. `RopeVisual`: `Foot → RailSlot (ở ray) → BelowRail (hướng
+người xem, cao độ sàn) → điểm thumb (xuống + về phía camera + xoè trái/phải)`.
+Ground opaque che phần dưới sàn nên dây "đi ra phía người chơi" thay vì xuyên sàn —
+cùng ý nghĩa "hai ngón kéo dây từ dưới". Căng = thẳng/sáng/dày, chùng = võng/mờ/mảnh.
+**Tách hoàn toàn khỏi lực gameplay** (lực kéo bàn chân **xuống** về `ForceAnchor` dưới
+ray — "cắm" chân). Foot_R giờ là chân **dẫn** (Foot_L rear) để mỗi dây ở đúng nửa màn
+hình, không chéo nhau.
+
+### 6. Input mới
+
+- `PuppetRopeInput.SetInput(left, right, depth)`. Mỗi ngón: dọc → tension bên đó,
+  ngang → depth contribution (deadzone 16 px, full 170 px, clamp −1..1).
+  `depth = trung bình 2 ngón`. Cả hai ngang **phải** cùng hướng mới ra depth.
+- Desktop: `A/L` dây, `Space` cả hai, **`Q` inward / `E` outward**.
+- EnhancedTouch: ownership zone cố định từ touch-start; hai ngón độc lập.
+
+### 7. HUD
+
+Thêm: Fwd/Back °, In/Out ° (kèm nhãn FORWARD/BACKWARD/INWARD/OUTWARD), Lean magnitude,
+Depth input bar (signed), PlayerSide, Facing. Camera đổi sang 3/4 để thấy depth lean.
+
+### Test (9-state + slack/taut + rapid + mirror), Left side
+
+| State | fwd° | depth° | pelvis% | yaw° | vel | OK |
+|---|---|---|---|---|---|---|
+| A neutral (½/½/0) | +3 | +1.5 | 62 | −0.1 | 0.04 | ✅ |
+| J slack (0/0/0) | −3.2 | +1.5 | 54 | −0.1 | 0.04 | ✅ |
+| B/K taut (1/1/0) | +0.3 | 0.0 | 99 | 0.0 | 0.00 | ✅ |
+| C forward (0/1/0) | **+67.3** | 0.0 | 68 | 0.0 | 0.03 | ✅ |
+| D backward (1/0/0) | **−68.8** | +0.5 | 57 | 0.1 | 0.09 | ✅ |
+| E inward (1/1/−1) | +1.4 | **−28.1** | 99 | 0.0 | 0.05 | ✅ |
+| F outward (1/1/1) | +1.3 | **+28.0** | 99 | 0.0 | 0.05 | ✅ |
+| G fwd+inward | +68.3 | −12.9 | 65 | −1.6 | 0.04 | ✅ |
+| H fwd+outward | +68.3 | +12.9 | 65 | −0.2 | 0.04 | ✅ |
+| I bwd+inward | ~−70 | ~−9 | ~48 | ~2 | ~0.1 | ✅ |
+| bwd+outward | −71.2 | +8.9 | 48 | −1.4 | 0.11 | ✅ |
+| L rapid transitions | — | — | — | peak angVel 0.9 | 0.05 | ✅ recover về A |
+| M Right mirror | R-rope→forward +66.6° (giống Left, body-relative); +depth→outward | | | ≤0.7 | ✅ |
+
+- **Fwd/back đối xứng:** +67.3 / −68.8 (lệch 1.5°, ~2%).
+- **In/out đối xứng:** ±28°.
+- Feet luôn tách (sep 0.26–0.38 m), không swap, `lowerLeg.z ≈ 0`, không xuyên.
+- Console: **0 error / 0 warning** (Play + mọi state). Health Check Phase 0 vẫn PASSED.
+  Bootstrap không đụng.
+
+### Còn thử nghiệm / cần người dùng play-test
+
+- Crouch ~50–54% (mục tiêu 40–45%) — sâu hơn 1.1 nhưng chưa đạt số; dáng "split-squat"
+  rộng fore/aft. Ưu tiên ổn định.
+- Diagonal: depth bị "ép" nhỏ lại (±13°) khi forward lean lớn (~68°) — hợp lý vật lý
+  nhưng cảm giác depth yếu ở diagonal.
+- Yaw ký sinh ≤ ~2° ở diagonal backward+depth (rất nhỏ, không phải spin).
+- Rope visual đọc được nhưng chưa "đã mắt"; đoạn dưới ray ngắn.
+- `debugLeft=1` = Right rope → forward (đảo `forwardBackSign` để hoán).
+- 2 build hơi khác nhau (Left crouch 54%, Right 47%) — nhiễu vật lý.
+- Multitouch chưa test trên thiết bị.
+
+---
+
 ## 2026-09-04 — Phase 1.1: Tuning symmetry + rope layout + facing model
 
 Chủ dự án chơi thử Phase 1, chốt 5 vấn đề + 1 bổ sung quan trọng về hệ quy chiếu.

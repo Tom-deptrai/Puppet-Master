@@ -10,15 +10,22 @@ using UnityEngine.SceneManagement;
 namespace PuppetMaster.Editor
 {
     /// <summary>
-    /// Phase 1.1 tool. Generates the physics prototype scene from scratch:
-    /// one jointed puppet standing on its side of the arena, FACING the (imagined)
-    /// opponent, two feet fore/aft on a rail, two control ropes tied to the feet
-    /// whose pulleys hang BEHIND the puppet (out of the combat zone).
+    /// Phase 1.2 tool. Generates the physics prototype scene from scratch:
+    /// one jointed puppet on its side of the arena FACING the opponent, two feet
+    /// fore/aft on a rail, two control ropes whose visuals now run DOWN through a
+    /// rail slot and off the bottom of the screen (nothing above the puppet).
     ///
     /// Facing model:
-    ///   PlayerSide.Left  -> puppet on the -X side, faces +X  (opponent to the right)
-    ///   PlayerSide.Right -> puppet on the +X side, faces -X  (opponent to the left)
-    ///   facingSign = +1 (Left) / -1 (Right); "forward" = toward the opponent.
+    ///   PlayerSide.Left  -> puppet at -X, faces +X  (opponent to the right)
+    ///   PlayerSide.Right -> puppet at +X, faces -X  (opponent to the left)
+    ///   facingSign = +1 (Left) / -1 (Right).
+    ///
+    /// Joint axis convention (Phase 1.2): every driven ConfigurableJoint is built
+    /// with axis = (1,0,0), secondaryAxis = (0,1,0). That makes the joint space
+    /// identity, so the controller just sets targetRotation = Inverse(worldTarget).
+    ///   angularX  (world X) = INWARD / OUTWARD depth lean   (limited, per joint)
+    ///   angularY  (world Y) = yaw                            (HARD LOCKED)
+    ///   angularZ  (world Z) = forward/back lean + squat      (limited)
     ///
     /// Re-runnable — overwrites Assets/_Project/Scenes/PuppetPrototype.unity.
     /// Never touches Bootstrap.
@@ -28,11 +35,10 @@ namespace PuppetMaster.Editor
         const string ScenePath = "Assets/_Project/Scenes/PuppetPrototype.unity";
         const string MatDir = "Assets/_Project/Materials/Prototype";
 
-        // stance / layout (metres)
-        const float ArenaOffset = 1.0f;   // how far the puppet sits from arena centre
-        const float StanceHalf = 0.16f;   // half the fore/aft foot spacing
+        const float ArenaOffset = 1.0f;
+        const float StanceHalf = 0.16f;
         const float FootY = 0.06f;
-        const float ShoulderZ = 0.15f;    // anatomical left/right = +/-Z
+        const float ShoulderZ = 0.15f;
 
         [MenuItem("Puppet Master/Phase 1/Build Puppet Prototype — Left side")]
         public static void BuildLeft() => Build(PlayerSide.Left);
@@ -42,11 +48,9 @@ namespace PuppetMaster.Editor
 
         public static void Build(PlayerSide side)
         {
-            float sideSign = side.Sign();          // -1 Left, +1 Right
-            float originX = sideSign * ArenaOffset; // puppet's X
-            float facing = -sideSign;              // +1 = faces +X (Left), -1 = faces -X (Right)
-
-            // point `d` metres in front of the puppet (toward the opponent)
+            float sideSign = side.Sign();           // -1 Left, +1 Right
+            float originX = sideSign * ArenaOffset;
+            float facing = -sideSign;               // +1 faces +X, -1 faces -X
             float Fwd(float d) => originX + facing * d;
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
@@ -57,8 +61,8 @@ namespace PuppetMaster.Editor
             Material mFoot = Mat("Puppet_Foot", new Color(0.96f, 0.76f, 0.24f));
             Material mFace = Mat("Puppet_Face", new Color(0.95f, 0.35f, 0.30f));
             Material mRail = Mat("Rail", new Color(0.85f, 0.30f, 0.28f));
+            Material mSlot = Mat("Rail_Slot", new Color(0.16f, 0.17f, 0.20f));
             Material mGround = Mat("Ground", new Color(0.13f, 0.14f, 0.16f));
-            Material mPulley = Mat("Pulley", new Color(0.30f, 0.32f, 0.36f));
             Material mRope = UnlitMat("Rope", Color.white);
 
             ConfigureCameraAndLight(originX, facing);
@@ -67,12 +71,11 @@ namespace PuppetMaster.Editor
             var puppetGo = new GameObject($"Puppet_{side}");
             var puppet = puppetGo.transform;
 
-            // ---- torso column (kept X-centred over the stance for L/R symmetry) ----
-            var pelvis = Part("Pelvis", PrimitiveType.Cube, new Vector3(Fwd(0f), 1.06f, 0f), new Vector3(0.24f, 0.20f, 0.30f), 10f, mBody, puppet, 2.2f);
-            var torso = Part("Torso", PrimitiveType.Cube, new Vector3(Fwd(0f), 1.40f, 0f), new Vector3(0.26f, 0.44f, 0.34f), 13f, mBody, puppet, 2.2f);
-            var head = Part("Head", PrimitiveType.Sphere, new Vector3(Fwd(0f), 1.79f, 0f), new Vector3(0.22f, 0.22f, 0.22f), 2.6f, mBody, puppet, 1.6f);
+            // ---- torso column (X-centred over the stance) ----
+            var pelvis = Part("Pelvis", PrimitiveType.Cube, new Vector3(Fwd(0f), 1.06f, 0f), new Vector3(0.24f, 0.20f, 0.30f), 10f, mBody, puppet, 2.4f);
+            var torso = Part("Torso", PrimitiveType.Cube, new Vector3(Fwd(0f), 1.40f, 0f), new Vector3(0.26f, 0.44f, 0.34f), 13f, mBody, puppet, 2.4f);
+            var head = Part("Head", PrimitiveType.Sphere, new Vector3(Fwd(0f), 1.79f, 0f), new Vector3(0.22f, 0.22f, 0.22f), 2.6f, mBody, puppet, 1.8f);
 
-            // a small "nose" so the facing direction is unmistakable
             var face = GameObject.CreatePrimitive(PrimitiveType.Cube);
             face.name = "Face";
             Object.DestroyImmediate(face.GetComponent<Collider>());
@@ -81,59 +84,62 @@ namespace PuppetMaster.Editor
             face.transform.localScale = new Vector3(0.06f, 0.09f, 0.13f);
             face.GetComponent<MeshRenderer>().sharedMaterial = mFace;
 
-            // ---- arms: light forward guard at the puppet's sides (±Z), not spread to camera ----
-            var uArmL = Part("UpperArm_L", PrimitiveType.Capsule, new Vector3(Fwd(0f), 1.36f, ShoulderZ), new Vector3(0.08f, 0.15f, 0.08f), 1.5f, mLimb, puppet, 1.0f);
-            var lArmL = Part("LowerArm_L", PrimitiveType.Capsule, new Vector3(Fwd(0.09f), 1.15f, ShoulderZ), new Vector3(0.07f, 0.14f, 0.07f), 1.0f, mLimb, puppet, 1.0f);
-            var uArmR = Part("UpperArm_R", PrimitiveType.Capsule, new Vector3(Fwd(0f), 1.36f, -ShoulderZ), new Vector3(0.08f, 0.15f, 0.08f), 1.5f, mLimb, puppet, 1.0f);
-            var lArmR = Part("LowerArm_R", PrimitiveType.Capsule, new Vector3(Fwd(0.09f), 1.15f, -ShoulderZ), new Vector3(0.07f, 0.14f, 0.07f), 1.0f, mLimb, puppet, 1.0f);
+            // ---- arms: light forward guard at the sides (±Z) ----
+            var uArmL = Part("UpperArm_L", PrimitiveType.Capsule, new Vector3(Fwd(0f), 1.36f, ShoulderZ), new Vector3(0.08f, 0.15f, 0.08f), 1.5f, mLimb, puppet, 1.1f);
+            var lArmL = Part("LowerArm_L", PrimitiveType.Capsule, new Vector3(Fwd(0.09f), 1.15f, ShoulderZ), new Vector3(0.07f, 0.14f, 0.07f), 1.0f, mLimb, puppet, 1.1f);
+            var uArmR = Part("UpperArm_R", PrimitiveType.Capsule, new Vector3(Fwd(0f), 1.36f, -ShoulderZ), new Vector3(0.08f, 0.15f, 0.08f), 1.5f, mLimb, puppet, 1.1f);
+            var lArmR = Part("LowerArm_R", PrimitiveType.Capsule, new Vector3(Fwd(0.09f), 1.15f, -ShoulderZ), new Vector3(0.07f, 0.14f, 0.07f), 1.0f, mLimb, puppet, 1.1f);
 
-            // ---- legs: fore/aft on the rail, EXACTLY mirrored fore↔aft so the
-            //      lean is symmetric. Foot_L leads (toward opponent). ----
-            float legZ = 0f;
-            var uLegL = Part("UpperLeg_L", PrimitiveType.Capsule, new Vector3(Fwd(0.07f), 0.76f, legZ), new Vector3(0.12f, 0.22f, 0.12f), 6.5f, mLeg, puppet, 1.1f);
-            var lLegL = Part("LowerLeg_L", PrimitiveType.Capsule, new Vector3(Fwd(0.12f), 0.32f, legZ), new Vector3(0.11f, 0.21f, 0.11f), 4.5f, mLeg, puppet, 1.1f);
-            var footL = Part("Foot_L", PrimitiveType.Cube, new Vector3(Fwd(StanceHalf), FootY, legZ), new Vector3(0.26f, 0.07f, 0.13f), 4.0f, mFoot, puppet, 3.0f);
-            var uLegR = Part("UpperLeg_R", PrimitiveType.Capsule, new Vector3(Fwd(-0.07f), 0.76f, legZ), new Vector3(0.12f, 0.22f, 0.12f), 6.5f, mLeg, puppet, 1.1f);
-            var lLegR = Part("LowerLeg_R", PrimitiveType.Capsule, new Vector3(Fwd(-0.12f), 0.32f, legZ), new Vector3(0.11f, 0.21f, 0.11f), 4.5f, mLeg, puppet, 1.1f);
-            var footR = Part("Foot_R", PrimitiveType.Cube, new Vector3(Fwd(-StanceHalf), FootY, legZ), new Vector3(0.26f, 0.07f, 0.13f), 4.0f, mFoot, puppet, 3.0f);
+            // ---- legs: fore/aft on the rail, exact fore↔aft mirror.
+            //      Foot_R LEADS (toward opponent, +facing); Foot_L is the rear foot.
+            //      This keeps each rope on its own screen half (no crossing under the rail):
+            //      Left rope -> Foot_L (rear, this player's back) -> left thumb zone. ----
+            var uLegL = Part("UpperLeg_L", PrimitiveType.Capsule, new Vector3(Fwd(-0.07f), 0.76f, 0f), new Vector3(0.12f, 0.22f, 0.12f), 6.5f, mLeg, puppet, 1.6f);
+            var lLegL = Part("LowerLeg_L", PrimitiveType.Capsule, new Vector3(Fwd(-0.12f), 0.32f, 0f), new Vector3(0.11f, 0.21f, 0.11f), 4.5f, mLeg, puppet, 2.4f);
+            var footL = Part("Foot_L", PrimitiveType.Cube, new Vector3(Fwd(-StanceHalf), FootY, 0f), new Vector3(0.26f, 0.07f, 0.13f), 4.2f, mFoot, puppet, 3.0f);
+            var uLegR = Part("UpperLeg_R", PrimitiveType.Capsule, new Vector3(Fwd(0.07f), 0.76f, 0f), new Vector3(0.12f, 0.22f, 0.12f), 6.5f, mLeg, puppet, 1.6f);
+            var lLegR = Part("LowerLeg_R", PrimitiveType.Capsule, new Vector3(Fwd(0.12f), 0.32f, 0f), new Vector3(0.11f, 0.21f, 0.11f), 4.5f, mLeg, puppet, 2.4f);
+            var footR = Part("Foot_R", PrimitiveType.Cube, new Vector3(Fwd(StanceHalf), FootY, 0f), new Vector3(0.26f, 0.07f, 0.13f), 4.2f, mFoot, puppet, 3.0f);
 
-            // ---- joints. Planar in the fight plane (X-Y): only rotation about
-            //      world Z is free; yaw + roll-into-screen are hard-locked. ----
-            var spine = Bend(torso, pelvis, new Vector3(Fwd(-0.01f), 1.17f, 0f), -55f, 55f, driven: true);
-            var neck = Bend(head, torso, new Vector3(Fwd(0.01f), 1.64f, 0f), -50f, 50f, driven: true);
+            // ---- joints. axis=(1,0,0), secondary=(0,1,0):
+            //      angZ = fight plane (fwd/back + squat), angX = depth, angY = yaw(LOCKED). ----
+            var spine = Bend(torso, pelvis, new Vector3(Fwd(0f), 1.17f, 0f), fight: 75f, depth: 42f, driven: true);
+            var neck = Bend(head, torso, new Vector3(Fwd(0f), 1.64f, 0f), fight: 55f, depth: 42f, driven: true);
 
-            var shoulderL = Bend(uArmL, torso, new Vector3(Fwd(0f), 1.49f, ShoulderZ), -120f, 120f, driven: false, passiveSpring: 40f);
-            var elbowL = Bend(lArmL, uArmL, new Vector3(Fwd(0.03f), 1.25f, ShoulderZ), -10f, 140f, driven: false, passiveSpring: 30f);
-            var shoulderR = Bend(uArmR, torso, new Vector3(Fwd(0f), 1.49f, -ShoulderZ), -120f, 120f, driven: false, passiveSpring: 40f);
-            var elbowR = Bend(lArmR, uArmR, new Vector3(Fwd(0.03f), 1.25f, -ShoulderZ), -10f, 140f, driven: false, passiveSpring: 30f);
+            var shoulderL = Bend(uArmL, torso, new Vector3(Fwd(0f), 1.49f, ShoulderZ), fight: 120f, depth: 70f, driven: false, passiveSpring: 40f);
+            var elbowL = Bend(lArmL, uArmL, new Vector3(Fwd(0.03f), 1.25f, ShoulderZ), fight: 130f, depth: 25f, driven: false, passiveSpring: 30f);
+            var shoulderR = Bend(uArmR, torso, new Vector3(Fwd(0f), 1.49f, -ShoulderZ), fight: 120f, depth: 70f, driven: false, passiveSpring: 40f);
+            var elbowR = Bend(lArmR, uArmR, new Vector3(Fwd(0.03f), 1.25f, -ShoulderZ), fight: 130f, depth: 25f, driven: false, passiveSpring: 30f);
 
-            var hipL = Bend(uLegL, pelvis, new Vector3(Fwd(0.035f), 0.97f, legZ), -95f, 95f, driven: true);
-            var kneeL = Bend(lLegL, uLegL, new Vector3(Fwd(0.11f), 0.54f, legZ), -120f, 120f, driven: true);
-            var ankleL = Bend(footL, lLegL, new Vector3(Fwd(0.15f), 0.11f, legZ), -55f, 55f, driven: true);
-            var hipR = Bend(uLegR, pelvis, new Vector3(Fwd(-0.035f), 0.97f, legZ), -95f, 95f, driven: true);
-            var kneeR = Bend(lLegR, uLegR, new Vector3(Fwd(-0.11f), 0.54f, legZ), -120f, 120f, driven: true);
-            var ankleR = Bend(footR, lLegR, new Vector3(Fwd(-0.15f), 0.11f, legZ), -55f, 55f, driven: true);
+            var hipL = Bend(uLegL, pelvis, new Vector3(Fwd(-0.035f), 0.97f, 0f), fight: 140f, depth: 36f, driven: true);
+            var kneeL = Bend(lLegL, uLegL, new Vector3(Fwd(-0.11f), 0.54f, 0f), fight: 150f, depth: 0f, driven: true);
+            var ankleL = Bend(footL, lLegL, new Vector3(Fwd(-0.15f), 0.11f, 0f), fight: 60f, depth: 12f, driven: true);
+            var hipR = Bend(uLegR, pelvis, new Vector3(Fwd(0.035f), 0.97f, 0f), fight: 140f, depth: 36f, driven: true);
+            var kneeR = Bend(lLegR, uLegR, new Vector3(Fwd(0.11f), 0.54f, 0f), fight: 150f, depth: 0f, driven: true);
+            var ankleR = Bend(footR, lLegR, new Vector3(Fwd(0.15f), 0.11f, 0f), fight: 60f, depth: 12f, driven: true);
 
-            // ---- rail: each foot slides a little along X, locked on Y/Z ----
-            var railL = RailJoint(footL, new Vector3(Fwd(StanceHalf), footL.position.y, 0f));
-            var railR = RailJoint(footR, new Vector3(Fwd(-StanceHalf), footR.position.y, 0f));
+            // ---- rail: each foot slides a little on X; everything else locked flat ----
+            var railL = RailJoint(footL, new Vector3(Fwd(-StanceHalf), footL.position.y, 0f));
+            var railR = RailJoint(footR, new Vector3(Fwd(StanceHalf), footR.position.y, 0f));
 
-            // ---- pelvis -> world: planar lock + upright/lean drive ----
+            // ---- pelvis -> world: Z position locked (stay in the fight plane),
+            //      2-axis lean drive (fight plane + depth), yaw hard-locked. ----
             var plane = pelvis.gameObject.AddComponent<ConfigurableJoint>();
             plane.connectedBody = null;
             plane.autoConfigureConnectedAnchor = false;
             plane.anchor = Vector3.zero;
             plane.connectedAnchor = pelvis.position;
-            plane.axis = new Vector3(0f, 0f, 1f);
+            plane.axis = new Vector3(1f, 0f, 0f);
             plane.secondaryAxis = new Vector3(0f, 1f, 0f);
             plane.xMotion = ConfigurableJointMotion.Free;   // shuffle fore/aft, rise/fall
             plane.yMotion = ConfigurableJointMotion.Free;
-            plane.zMotion = ConfigurableJointMotion.Locked; // stay in the fight plane
-            plane.angularXMotion = ConfigurableJointMotion.Limited; // forward/back lean
-            plane.angularYMotion = ConfigurableJointMotion.Locked;
-            plane.angularZMotion = ConfigurableJointMotion.Locked;
-            plane.lowAngularXLimit = new SoftJointLimit { limit = -70f };
-            plane.highAngularXLimit = new SoftJointLimit { limit = 70f };
+            plane.zMotion = ConfigurableJointMotion.Locked; // never leaves the fight plane
+            plane.angularXMotion = ConfigurableJointMotion.Limited; // depth lean
+            plane.angularYMotion = ConfigurableJointMotion.Locked;  // NO yaw
+            plane.angularZMotion = ConfigurableJointMotion.Limited; // fwd/back lean
+            plane.lowAngularXLimit = new SoftJointLimit { limit = -40f };
+            plane.highAngularXLimit = new SoftJointLimit { limit = 40f };
+            plane.angularZLimit = new SoftJointLimit { limit = 78f };
             plane.rotationDriveMode = RotationDriveMode.Slerp;
             plane.slerpDrive = new JointDrive { positionSpring = 0f, positionDamper = 0f, maximumForce = 0f };
             plane.projectionMode = JointProjectionMode.PositionAndRotation;
@@ -141,36 +147,43 @@ namespace PuppetMaster.Editor
             plane.enablePreprocessing = false;
             plane.configuredInWorldSpace = false;
 
-            // ---- ropes. Pulleys hang straight above each foot (never toward the
-            //      opponent / arena centre). Puppet already sits off-centre, so the
-            //      whole rope rig stays in this player's third of the screen. ----
-            var pulleys = new GameObject("Pulleys").transform;
-            var pulleyL = Pulley("Pulley_L", new Vector3(Fwd(StanceHalf), 3.35f, 0.12f), pulleys, mPulley);
-            var pulleyR = Pulley("Pulley_R", new Vector3(Fwd(-StanceHalf), 3.05f, -0.12f), pulleys, mPulley);
-            var forceAnchorL = ForceAnchor("ForceAnchor_L", new Vector3(Fwd(StanceHalf), 2.6f, 0f), pulleys);
-            var forceAnchorR = ForceAnchor("ForceAnchor_R", new Vector3(Fwd(-StanceHalf), 2.6f, 0f), pulleys);
-            var attachL = RopeAttach(footL, "RopeAttach_L", facing);
-            var attachR = RopeAttach(footR, "RopeAttach_R", facing);
+            // ---- rope rig: NOTHING above the puppet. Foot_L is the REAR foot. ----
+            var rigging = new GameObject("Rigging").transform;
+            RailSlotGuide("Slot_L", Fwd(-StanceHalf), rigging, mSlot);
+            RailSlotGuide("Slot_R", Fwd(StanceHalf), rigging, mSlot);
+            var railSlotL = Marker("RailSlot_L", new Vector3(Fwd(-StanceHalf), 0.02f, 0f), rigging);
+            var railSlotR = Marker("RailSlot_R", new Vector3(Fwd(StanceHalf), 0.02f, 0f), rigging);
+            // "below" is really "out toward the viewer, at floor level" — the ground
+            // is opaque, so the rope reads as coming out from under the rail toward
+            // the player rather than literally dropping through the floor.
+            var belowL = Marker("BelowRail_L", new Vector3(Fwd(-StanceHalf) - 0.05f, -0.02f, -0.95f), rigging);
+            var belowR = Marker("BelowRail_R", new Vector3(Fwd(StanceHalf) + 0.05f, -0.02f, -0.95f), rigging);
+            var forceL = Marker("ForceAnchor_L", new Vector3(Fwd(-StanceHalf), -0.30f, 0f), rigging);
+            var forceR = Marker("ForceAnchor_R", new Vector3(Fwd(StanceHalf), -0.30f, 0f), rigging);
+            var attachL = RopeAttach(footL, "RopeAttach_L");
+            var attachR = RopeAttach(footR, "RopeAttach_R");
 
             // ---- runtime scripts ----
             var rig = puppetGo.AddComponent<PuppetRig>();
             rig.side = side;
+            rig.facingSign = facing;
             rig.pelvis = pelvis; rig.torso = torso; rig.head = head;
             rig.spine = spine; rig.neck = neck; rig.pelvisPlaneJoint = plane;
             rig.standingPelvisHeight = pelvis.position.y;
+            rig.standingHeadHeight = head.position.y;
             rig.standingFootSeparation = Mathf.Abs(footL.position.x - footR.position.x);
             rig.left = new PuppetRig.Leg
             {
                 upperLeg = uLegL, lowerLeg = lLegL, foot = footL,
                 hip = hipL, knee = kneeL, ankle = ankleL, railJoint = railL,
-                pulley = pulleyL, forceAnchor = forceAnchorL, ropeAttach = attachL,
+                ropeAttach = attachL, railSlot = railSlotL, belowRail = belowL, forceAnchor = forceL,
                 railHomeX = footL.position.x,
             };
             rig.right = new PuppetRig.Leg
             {
                 upperLeg = uLegR, lowerLeg = lLegR, foot = footR,
                 hip = hipR, knee = kneeR, ankle = ankleR, railJoint = railR,
-                pulley = pulleyR, forceAnchor = forceAnchorR, ropeAttach = attachR,
+                ropeAttach = attachR, railSlot = railSlotR, belowRail = belowR, forceAnchor = forceR,
                 railHomeX = footR.position.x,
             };
 
@@ -180,10 +193,9 @@ namespace PuppetMaster.Editor
             hud.controller = controller; hud.rig = rig; hud.input = input;
 
             var ropes = new GameObject("Ropes").transform;
-            MakeRope("Rope_L", ropes, pulleyL, attachL, isLeft: true, controller, mRope);
-            MakeRope("Rope_R", ropes, pulleyR, attachR, isLeft: false, controller, mRope);
+            MakeRope("Rope_L", ropes, controller, attachL, railSlotL, belowL, isLeft: true, mRope);
+            MakeRope("Rope_R", ropes, controller, attachR, railSlotR, belowR, isLeft: false, mRope);
 
-            // ---- save ----
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -192,11 +204,11 @@ namespace PuppetMaster.Editor
             Selection.activeGameObject = puppetGo;
 
             Debug.Log(
-                $"[Phase 1.1] Built PuppetPrototype.unity  (side = {side}, faces {(facing > 0 ? "+X" : "-X")})\n" +
-                $"  puppet X {originX:0.00}, feet fore/aft on rail, pulleys BEHIND at ~X {Fwd(-0.5f):0.0}\n" +
-                "  Foot_L leads toward the opponent; Left Rope = Foot_L, Right Rope = Foot_R\n" +
-                "  squat = f(combined tension), lean = f(tension difference) — both symmetric\n" +
-                "  Play, then hold A / L / Space or drag DOWN in a screen half");
+                $"[Phase 1.2] Built PuppetPrototype.unity  (side = {side}, faces {(facing > 0 ? "+X" : "-X")})\n" +
+                "  4-axis: tension L/R, fwd/back = tension diff, in/out = averaged horizontal input\n" +
+                "  joints axis=(1,0,0): angZ = fight plane, angX = depth, angY = yaw LOCKED\n" +
+                "  ropes run foot -> rail slot -> below the rail -> off the bottom of the screen\n" +
+                "  Play: A / L / Space (rope) · Q / E (inward/outward) · drag ↓ tension ↔ depth");
         }
 
         public static void BuildFromCommandLine()
@@ -212,12 +224,12 @@ namespace PuppetMaster.Editor
             var cam = Camera.main;
             if (cam != null)
             {
-                // side-on, looking across the fight plane; puppet sits to one
-                // side with open space in front of it (where the opponent goes)
-                cam.transform.SetPositionAndRotation(
-                    new Vector3(originX + facing * 0.15f, 1.32f, -5.1f),
-                    Quaternion.Euler(4f, 0f, 0f));
-                cam.fieldOfView = 45f;
+                // 3/4 view: ahead of the puppet (opponent side) + a little above,
+                // so BOTH forward/back and inward/outward lean read clearly.
+                Vector3 camPos = new Vector3(originX + facing * 1.5f, 1.62f, -4.7f);
+                Vector3 look = new Vector3(originX - facing * 0.05f, 1.02f, 0.05f);
+                cam.transform.SetPositionAndRotation(camPos, Quaternion.LookRotation(look - camPos));
+                cam.fieldOfView = 44f;
                 cam.clearFlags = CameraClearFlags.SolidColor;
                 cam.backgroundColor = new Color(0.16f, 0.17f, 0.19f);
                 cam.nearClipPlane = 0.05f;
@@ -226,8 +238,8 @@ namespace PuppetMaster.Editor
             var sun = Object.FindFirstObjectByType<Light>();
             if (sun != null)
             {
-                sun.transform.rotation = Quaternion.Euler(45f, 35f * -facing, 0f);
-                sun.intensity = 1.15f;
+                sun.transform.rotation = Quaternion.Euler(48f, 40f * -facing, 0f);
+                sun.intensity = 1.2f;
                 sun.shadows = LightShadows.Soft;
             }
         }
@@ -244,7 +256,7 @@ namespace PuppetMaster.Editor
             r.name = "Rail";
             Object.DestroyImmediate(r.GetComponent<BoxCollider>());
             r.transform.position = new Vector3(originX, 0f, 0f);
-            r.transform.localScale = new Vector3(1.1f, 0.06f, 0.42f);
+            r.transform.localScale = new Vector3(1.15f, 0.06f, 0.42f);
             r.GetComponent<MeshRenderer>().sharedMaterial = rail;
         }
 
@@ -284,33 +296,37 @@ namespace PuppetMaster.Editor
             rb.angularDamping = angularDamping;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
-            rb.maxAngularVelocity = 12f;
-            rb.solverIterations = 44;
-            rb.solverVelocityIterations = 22;
+            rb.maxAngularVelocity = 28f;
+            rb.solverIterations = 48;
+            rb.solverVelocityIterations = 24;
             return rb;
         }
 
         /// <summary>
-        /// ConfigurableJoint child->parent at worldAnchor. Free axis = rotation
-        /// about world Z (the fight plane). Yaw + into-screen roll hard-locked.
+        /// ConfigurableJoint child->parent at worldAnchor.
+        /// axis=(1,0,0), secondary=(0,1,0)  ->  joint space is identity.
+        ///   angularZ = fight plane (fwd/back + squat)  -> Limited to `fight`
+        ///   angularX = depth (inward/outward)          -> Limited to ±`depth` (0 => Locked)
+        ///   angularY = yaw                             -> HARD LOCKED
         /// </summary>
         static ConfigurableJoint Bend(Rigidbody child, Rigidbody parent, Vector3 worldAnchor,
-            float xLow, float xHigh, bool driven, float passiveSpring = 6f)
+            float fight, float depth, bool driven, float passiveSpring = 6f)
         {
             var j = child.gameObject.AddComponent<ConfigurableJoint>();
             j.connectedBody = parent;
             j.autoConfigureConnectedAnchor = false;
             j.anchor = child.transform.InverseTransformPoint(worldAnchor);
             j.connectedAnchor = parent.transform.InverseTransformPoint(worldAnchor);
-            j.axis = new Vector3(0f, 0f, 1f);
+            j.axis = new Vector3(1f, 0f, 0f);
             j.secondaryAxis = new Vector3(0f, 1f, 0f);
 
             j.xMotion = j.yMotion = j.zMotion = ConfigurableJointMotion.Locked;
-            j.angularXMotion = ConfigurableJointMotion.Limited;
-            j.angularYMotion = ConfigurableJointMotion.Locked;
-            j.angularZMotion = ConfigurableJointMotion.Locked;
-            j.lowAngularXLimit = new SoftJointLimit { limit = xLow };
-            j.highAngularXLimit = new SoftJointLimit { limit = xHigh };
+            j.angularXMotion = depth > 0.5f ? ConfigurableJointMotion.Limited : ConfigurableJointMotion.Locked;
+            j.angularYMotion = ConfigurableJointMotion.Locked;   // NO yaw, ever
+            j.angularZMotion = ConfigurableJointMotion.Limited;
+            j.lowAngularXLimit = new SoftJointLimit { limit = -Mathf.Max(1f, depth) };
+            j.highAngularXLimit = new SoftJointLimit { limit = Mathf.Max(1f, depth) };
+            j.angularZLimit = new SoftJointLimit { limit = Mathf.Max(1f, fight) };
 
             var noSpring = new SoftJointLimitSpring { spring = 0f, damper = 0f };
             j.angularXLimitSpring = noSpring;
@@ -321,7 +337,7 @@ namespace PuppetMaster.Editor
             {
                 positionSpring = driven ? 0f : passiveSpring,
                 positionDamper = driven ? 0f : passiveSpring * 0.25f,
-                maximumForce = driven ? 0f : 150f,
+                maximumForce = driven ? 0f : 180f,
             };
 
             j.projectionMode = JointProjectionMode.PositionAndRotation;
@@ -346,15 +362,13 @@ namespace PuppetMaster.Editor
             j.yMotion = ConfigurableJointMotion.Locked;    // never leaves the rail
             j.zMotion = ConfigurableJointMotion.Locked;
             j.linearLimit = new SoftJointLimit { limit = 0.10f };
-            j.linearLimitSpring = new SoftJointLimitSpring { spring = 1500f, damper = 45f };
+            j.linearLimitSpring = new SoftJointLimitSpring { spring = 1800f, damper = 55f };
 
-            j.angularXMotion = ConfigurableJointMotion.Locked;
+            j.angularXMotion = ConfigurableJointMotion.Locked; // foot stays flat on the rail
             j.angularYMotion = ConfigurableJointMotion.Locked;
             j.angularZMotion = ConfigurableJointMotion.Locked;
 
-            // firm pull back to this foot's home X -> feet keep their stagger,
-            // never cross, and the pelvis can't drop by merging the feet
-            j.xDrive = new JointDrive { positionSpring = 2600f, positionDamper = 60f, maximumForce = 9000f };
+            j.xDrive = new JointDrive { positionSpring = 3000f, positionDamper = 70f, maximumForce = 12000f };
 
             j.projectionMode = JointProjectionMode.PositionAndRotation;
             j.projectionDistance = 0.02f;
@@ -363,19 +377,18 @@ namespace PuppetMaster.Editor
             return j;
         }
 
-        static Transform Pulley(string name, Vector3 pos, Transform parent, Material mat)
+        static void RailSlotGuide(string name, float x, Transform parent, Material mat)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
             Object.DestroyImmediate(go.GetComponent<Collider>());
             go.transform.SetParent(parent, worldPositionStays: true);
-            go.transform.position = pos;
-            go.transform.localScale = Vector3.one * 0.09f;
+            go.transform.position = new Vector3(x, 0.015f, 0f);
+            go.transform.localScale = new Vector3(0.05f, 0.16f, 0.24f);
             go.GetComponent<MeshRenderer>().sharedMaterial = mat;
-            return go.transform;
         }
 
-        static Transform ForceAnchor(string name, Vector3 pos, Transform parent)
+        static Transform Marker(string name, Vector3 pos, Transform parent)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, worldPositionStays: true);
@@ -383,16 +396,16 @@ namespace PuppetMaster.Editor
             return go.transform;
         }
 
-        static Transform RopeAttach(Rigidbody foot, string name, float facing)
+        static Transform RopeAttach(Rigidbody foot, string name)
         {
             var go = new GameObject(name);
             go.transform.SetParent(foot.transform, worldPositionStays: false);
-            go.transform.localPosition = new Vector3(-facing * 0.09f, 0.04f, 0f); // heel side
+            go.transform.localPosition = new Vector3(0f, -0.02f, 0f); // bottom of the foot
             return go.transform;
         }
 
-        static void MakeRope(string name, Transform parent, Transform pulley, Transform attach,
-            bool isLeft, PuppetRopeController controller, Material mat)
+        static void MakeRope(string name, Transform parent, PuppetRopeController controller,
+            Transform attach, Transform slot, Transform below, bool isLeft, Material mat)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, worldPositionStays: true);
@@ -409,8 +422,9 @@ namespace PuppetMaster.Editor
 
             var rv = go.AddComponent<RopeVisual>();
             rv.controller = controller;
-            rv.pulley = pulley;
             rv.footAttach = attach;
+            rv.railSlot = slot;
+            rv.belowRail = below;
             rv.isLeft = isLeft;
         }
 

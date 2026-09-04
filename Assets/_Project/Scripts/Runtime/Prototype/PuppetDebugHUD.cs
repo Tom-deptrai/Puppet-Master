@@ -3,9 +3,9 @@ using UnityEngine;
 namespace PuppetMaster.Prototype
 {
     /// <summary>
-    /// Phase 1.1 prototype. Bare IMGUI overlay so the mechanic can be judged.
-    /// Lean is reported in the FACING frame (forward = toward the opponent).
-    /// Not meant to be pretty.
+    /// Phase 1.2 prototype. Bare IMGUI overlay so the 4-axis mechanic can be
+    /// judged. Lean is reported in the FACING frame (forward = toward opponent)
+    /// and the camera-depth frame (outward = toward camera). Not meant to be pretty.
     /// </summary>
     public sealed class PuppetDebugHUD : MonoBehaviour
     {
@@ -35,9 +35,9 @@ namespace PuppetMaster.Prototype
         void EnsureStyles()
         {
             if (_label != null) return;
-            _label = new GUIStyle(GUI.skin.label) { fontSize = 15, richText = true };
-            _header = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold, richText = true };
-            _small = new GUIStyle(GUI.skin.label) { fontSize = 12, richText = true };
+            _label = new GUIStyle(GUI.skin.label) { fontSize = 14, richText = true };
+            _header = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold, richText = true };
+            _small = new GUIStyle(GUI.skin.label) { fontSize = 11, richText = true };
         }
 
         void OnGUI()
@@ -46,7 +46,7 @@ namespace PuppetMaster.Prototype
             float w = Screen.width, h = Screen.height;
 
             bool facesRight = rig != null && rig.side == PlayerSide.Left;
-            string oppDir = facesRight ? "▶ opponent" : "opponent ◀";
+            string facing = facesRight ? "+X ▶ (opponent right)" : "◀ -X (opponent left)";
 
             if (drawZones)
             {
@@ -57,52 +57,74 @@ namespace PuppetMaster.Prototype
                 GUI.color = new Color(1, 1, 1, 0.3f);
                 GUI.DrawTexture(new Rect(w * 0.5f - 1, 0, 2, h), _px);
                 GUI.color = Color.white;
-                GUI.Label(new Rect(w * 0.5f - 200, h - 30, 190, 22), "◀ LEFT ROPE zone", _header);
-                GUI.Label(new Rect(w * 0.5f + 12, h - 30, 220, 22), "RIGHT ROPE zone ▶", _header);
+                GUI.Label(new Rect(w * 0.5f - 210, h - 28, 200, 20),
+                    "◀ LEFT ROPE (Foot_L)   ↕tension  ↔depth", _small);
+                GUI.Label(new Rect(w * 0.5f + 12, h - 28, 260, 20),
+                    "RIGHT ROPE (Foot_R) ▶", _small);
             }
 
-            var panel = new Rect(12, 40, 350, 212);
-            GUI.color = new Color(0, 0, 0, 0.58f);
+            var panel = new Rect(12, 36, 356, 232);
+            GUI.color = new Color(0, 0, 0, 0.6f);
             GUI.DrawTexture(panel, _px);
             GUI.color = Color.white;
 
             GUILayout.BeginArea(new Rect(panel.x + 12, panel.y + 8, panel.width - 24, panel.height - 16));
             string sideStr = rig != null ? rig.side.ToString() : "?";
-            GUILayout.Label($"PUPPET PROTOTYPE — Phase 1.1   <size=12>[{sideStr}, {oppDir}]</size>", _header);
+            GUILayout.Label($"PUPPET — Phase 1.2   <size=11>[{sideStr} · faces {facing}]</size>", _header);
 
             if (controller != null)
             {
-                Bar("Left Rope", controller.LeftTension, LeftTint);
-                Bar("Right Rope", controller.RightTension, RightTint);
+                Bar("Left rope", controller.LeftTension, LeftTint);
+                Bar("Right rope", controller.RightTension, RightTint);
+
+                float depthIn = input != null ? input.DepthValue : controller.DepthValue;
+                SignedBar("Depth input", depthIn, new Color(0.55f, 0.85f, 0.55f));
 
                 float fwd = controller.ForwardLeanDeg;
-                string dir = Mathf.Abs(fwd) < 1.5f ? "centred"
-                    : (fwd > 0f ? "FORWARD (toward opponent)" : "BACKWARD (away)");
-                GUILayout.Label($"Lean : <b>{fwd:+0.0;-0.0;0.0}°</b>   {dir}", _label);
+                float dep = controller.DepthLeanDeg;
+                float mag = controller.CombinedLeanDeg;
+
+                GUILayout.Label(
+                    $"Fwd/Back : <b>{fwd:+0.0;-0.0;0.0}°</b>  {(Mathf.Abs(fwd) < 2f ? "—" : fwd > 0 ? "FORWARD" : "BACKWARD")}", _label);
+                GUILayout.Label(
+                    $"In/Out   : <b>{dep:+0.0;-0.0;0.0}°</b>  {(Mathf.Abs(dep) < 2f ? "—" : dep > 0 ? "OUTWARD" : "INWARD")}", _label);
+                GUILayout.Label($"Lean magnitude : <b>{mag:0.0}°</b>", _label);
 
                 float pelvisY = controller.PelvisHeight;
                 float standY = rig != null ? Mathf.Max(0.01f, rig.standingPelvisHeight) : 1f;
-                GUILayout.Label(
-                    $"Pelvis height : <b>{pelvisY:0.00}</b> m  (<b>{pelvisY / standY * 100f:0}%</b> of standing)", _label);
+                GUILayout.Label($"Pelvis : <b>{pelvisY:0.00}</b> m  (<b>{pelvisY / standY * 100f:0}%</b> standing)", _label);
 
                 float sep = controller.FootSeparation;
                 float standSep = rig != null ? rig.standingFootSeparation : 0.32f;
-                GUILayout.Label($"Foot separation : <b>{sep:0.00}</b> m  (standing {standSep:0.00})", _label);
+                GUILayout.Label($"Foot separation : <b>{sep:0.00}</b> m  (stand {standSep:0.00})", _label);
             }
 
-            GUILayout.Label("<size=12>Hold A / L pull ropes · Space both · drag DOWN in a zone</size>", _small);
+            GUILayout.Label("<size=11>A/L rope · Space both · Q inward · E outward · drag: ↓ tension ↔ depth</size>", _small);
             GUILayout.EndArea();
         }
 
         void Bar(string name, float v, Color c)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"{name}: <b>{v:0.00}</b>", _label, GUILayout.Width(140));
-            Rect r = GUILayoutUtility.GetRect(160, 15, GUILayout.ExpandWidth(true));
-            GUI.color = new Color(1, 1, 1, 0.15f);
-            GUI.DrawTexture(r, _px);
+            GUILayout.Label($"{name}: <b>{v:0.00}</b>", _label, GUILayout.Width(128));
+            Rect r = GUILayoutUtility.GetRect(150, 14, GUILayout.ExpandWidth(true));
+            GUI.color = new Color(1, 1, 1, 0.15f); GUI.DrawTexture(r, _px);
+            GUI.color = c; GUI.DrawTexture(new Rect(r.x, r.y, r.width * Mathf.Clamp01(v), r.height), _px);
+            GUI.color = Color.white;
+            GUILayout.EndHorizontal();
+        }
+
+        void SignedBar(string name, float v, Color c)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"{name}: <b>{v:+0.00;-0.00;0.00}</b>", _label, GUILayout.Width(128));
+            Rect r = GUILayoutUtility.GetRect(150, 14, GUILayout.ExpandWidth(true));
+            GUI.color = new Color(1, 1, 1, 0.15f); GUI.DrawTexture(r, _px);
+            float mid = r.x + r.width * 0.5f;
+            float half = r.width * 0.5f * Mathf.Clamp(Mathf.Abs(v), 0f, 1f);
             GUI.color = c;
-            GUI.DrawTexture(new Rect(r.x, r.y, r.width * Mathf.Clamp01(v), r.height), _px);
+            GUI.DrawTexture(v >= 0f ? new Rect(mid, r.y, half, r.height) : new Rect(mid - half, r.y, half, r.height), _px);
+            GUI.color = new Color(1, 1, 1, 0.5f); GUI.DrawTexture(new Rect(mid - 1, r.y, 2, r.height), _px);
             GUI.color = Color.white;
             GUILayout.EndHorizontal();
         }

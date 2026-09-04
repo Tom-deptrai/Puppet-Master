@@ -284,16 +284,21 @@ Before making significant gameplay or architecture changes, an AI working on thi
 
 - repository created; Phase 0 environment/project initialization complete
 - Unity MCP editor bridge working
-- **Phase 1 / 1.1 (physics prototype) in progress**: `Assets/_Project/Scenes/PuppetPrototype.unity`
-  has one jointed puppet standing on its side of the arena and **facing the
-  (imagined) opponent**, two feet fore/aft on a rail, two control ropes tied to the
-  feet with pulleys behind the puppet (clear of the combat zone). Two-zone tension
-  input. Both-taut stands the puppet (~99%); both-slack drops it into a coherent
-  crouch (~53%); one rope taut leans it ~40° forward/backward (symmetric within
-  ~1.5°). `PlayerSide.Left/Right` mirrors the whole layout. Physics is stable but
-  all tuning values are a baseline for hands-on testing — see `DEVELOPMENT_LOG.md`
-  and `PhaseReports/PHASE_01_1_REPORT.md` (2026-09-04). Not yet built: combat,
-  weapons, a second puppet, anything past milestone 1.
+- **Phase 1 → 1.2 (physics prototype) in progress**: `Assets/_Project/Scenes/PuppetPrototype.unity`
+  has one jointed puppet on its side of the arena **facing the opponent**, two feet
+  fore/aft on a rail, two control ropes whose visuals now run DOWN off the bottom of
+  the screen (nothing above the puppet). **Four-axis control from two thumbs:**
+  each thumb's vertical drag = that rope's tension; the two thumbs' averaged
+  horizontal drag = an inward/outward (depth) lean; tension difference = a
+  forward/backward lean; combined tension = squat depth. Both-taut stands (~99%);
+  both-slack crouches (~50%); one rope taut = ~67° forward/backward lean (symmetric
+  within ~2°); depth axis = ~±28°. The rig stays CONTROLLED 2.5D+ — yaw is
+  hard-locked everywhere (no back-turning), feet never leave the rail. Response
+  ~0.02s to first motion, ~0.25s to 80% pose. `PlayerSide.Left/Right` mirrors the
+  layout; forward/backward is opponent-relative, inward/outward is camera-relative.
+  All tuning is a baseline for hands-on testing — see `DEVELOPMENT_LOG.md` and
+  `PhaseReports/PHASE_01_2_REPORT.md` (2026-09-04). Not yet built: combat, weapons,
+  a second puppet, anything past milestone 1.
 - all gameplay details remain open to testing and refinement
 
 ---
