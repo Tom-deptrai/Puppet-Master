@@ -371,8 +371,8 @@ namespace PuppetMaster.Prototype
                 elbow.targetRotation = Quaternion.Inverse(elbowTarget);
             }
 
-            // Swipe momentum / physical inertia:
-            // Fast swipe imparts torque to upper arm, lower arm, and sword bodies
+            // Swipe momentum / physical inertia. Torque enters through the arm; the
+            // rigid hand attachment transfers it to the sword without fighting the joint.
             if (Mathf.Abs(armVel) > 0.15f)
             {
                 Vector3 torqueUpper = new Vector3(0f, -_facingSign * armVel * 0.7f, _facingSign * armVel * 0.9f) * armSwipeImpulseScale;
@@ -382,8 +382,6 @@ namespace PuppetMaster.Prototype
                     _rig.rightArm.upperArm.AddTorque(torqueUpper, ForceMode.Acceleration);
                 if (_rig.rightArm.lowerArm != null)
                     _rig.rightArm.lowerArm.AddTorque(torqueLower, ForceMode.Acceleration);
-                if (_rig.sword != null)
-                    _rig.sword.AddTorque(torqueLower * 0.5f, ForceMode.Acceleration);
             }
         }
 

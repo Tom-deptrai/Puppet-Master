@@ -927,3 +927,13 @@ Khởi động prototype vật lý chiến đấu: Weapon Collision + Physical I
    - Vung mạnh được phân loại STRONG (6.21 m/s, strength 7.44).
    - Target nhận impulse nảy giật lùi đúng hướng, không nổ khớp, chân giữ chặt trên ray.
    - Project Health Check PASSED 100%.
+
+---
+
+## 2026-09-04 — Fix sword attachment and add target weapon
+
+- Xác nhận `Sword_R` không bị break joint và không có script auto-reattach: `breakForce`/`breakTorque` vốn là Infinity. Hiện tượng tuột rồi trở lại là constraint drift khi joint khóa 6-DOF tắt preprocessing, cộng với torque được bơm trực tiếp vào sword; `JointProjection` sau đó snap kiếm về anchor.
+- Dùng chung một cấu hình `ConfigurableJoint` chắc chắn cho hai kiếm: nối đúng `Hand_R`, anchor và connectedAnchor tại tâm grip, khóa toàn bộ linear/angular motion, `breakForce`/`breakTorque = Infinity`, tắt collision nội bộ với hand/arm/body, bật preprocessing và siết projection còn 0.002 m / 0.5°.
+- Bỏ torque trực tiếp lên sword; torque/momentum vẫn truyền vật lý từ upper arm/lower arm qua wrist, hand và weapon joint. Rigidbody sword vẫn giữ mass, inertia, gravity, collider và Continuous Dynamic collision.
+- Thêm `Sword_Target` Rigidbody + blade/handle Collider vào `Target_Hand_R`, dùng cùng attachment chắc chắn và tư thế guard thụ động; không thêm AI hay điều khiển.
+- Sword-vs-sword dùng phản lực contact solver nguyên bản (không cộng impulse hit reaction lần hai) và log `WEAPON CLASH`. Play Mode xác nhận clash, cả hai kiếm giữ trong tay sau chuỗi swing/lean/depth nhanh, không có joint break/explosion.

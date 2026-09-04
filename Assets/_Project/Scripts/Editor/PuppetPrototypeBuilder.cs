@@ -108,7 +108,9 @@ namespace PuppetMaster.Editor
             // ---- arms: exactly 2 arms total, one continuous bone chain per side ----
             var (uArmL, lArmL, handL, shoulderL, elbowL, wristL) = BuildArm("L", ShoulderZ, mLimb, mLimb, mFoot, puppet, torso, facing, originX);
             var (uArmR, lArmR, handR, shoulderR, elbowR, wristR) = BuildArm("R", -ShoulderZ, mLimb, mLimb, mFoot, puppet, torso, facing, originX);
-            var sword = BuildSword(handR, puppet, facing, originX, mBlade, mHilt, mGuard);
+            var sword = BuildSword("Sword_R", handR, puppet,
+                new Vector3(facing * 0.85f, 0.45f, -0.08f),
+                mBlade, mHilt, mGuard, addCollisionHandler: true);
 
             // ---- legs: fore/aft on the rail, exact fore↔aft mirror.
             //      Foot_R LEADS (toward opponent, +facing); Foot_L is the rear foot.
@@ -228,7 +230,8 @@ namespace PuppetMaster.Editor
             // ---- target dummy (physical test dummy on opposite rail) ----
             float targetOriginX = -originX;
             float targetFacing = -facing;
-            BuildTargetDummy(targetOriginX, targetFacing, mTBody, mTLimb, mTLeg, mTFoot, mTFace);
+            BuildTargetDummy(targetOriginX, targetFacing, mTBody, mTLimb, mTLeg, mTFoot, mTFace,
+                mBlade, mHilt, mGuard);
 
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
             EditorSceneManager.MarkSceneDirty(scene);
@@ -443,16 +446,15 @@ namespace PuppetMaster.Editor
         }
 
         static Rigidbody BuildSword(
-            Rigidbody hand, Transform parent, float facing, float originX,
-            Material mBlade, Material mHilt, Material mGuard)
+            string name, Rigidbody hand, Transform parent, Vector3 guardDirection,
+            Material mBlade, Material mHilt, Material mGuard, bool addCollisionHandler)
         {
             Vector3 gripPos = hand.transform.position;
 
-            // Blade direction: points forward toward opponent (+facing) and angled slightly upward
-            Vector3 bladeDir = new Vector3(facing * 0.85f, 0.45f, -0.08f).normalized;
+            Vector3 bladeDir = guardDirection.normalized;
             Quaternion swordRot = Quaternion.FromToRotation(Vector3.up, bladeDir);
 
-            var swordGo = new GameObject("Sword_R");
+            var swordGo = new GameObject(name);
             swordGo.transform.SetParent(parent, worldPositionStays: true);
             swordGo.transform.SetPositionAndRotation(gripPos, swordRot);
 
@@ -517,12 +519,14 @@ namespace PuppetMaster.Editor
             rb.solverIterations = 48;
             rb.solverVelocityIterations = 24;
 
-            // Combat Physics: SwordCollisionHandler
-            var handler = swordGo.AddComponent<SwordCollisionHandler>();
-            handler.weakThreshold = 2.0f;
-            handler.mediumThreshold = 5.0f;
-            handler.impulseForceScale = 1.8f;
-            handler.maxImpulse = 35.0f;
+            if (addCollisionHandler)
+            {
+                var handler = swordGo.AddComponent<SwordCollisionHandler>();
+                handler.weakThreshold = 2.0f;
+                handler.mediumThreshold = 5.0f;
+                handler.impulseForceScale = 1.8f;
+                handler.maxImpulse = 35.0f;
+            }
 
             // ConfigurableJoint to Hand_R
             var j = swordGo.AddComponent<ConfigurableJoint>();
@@ -536,17 +540,23 @@ namespace PuppetMaster.Editor
             j.xMotion = j.yMotion = j.zMotion = ConfigurableJointMotion.Locked;
             j.angularXMotion = j.angularYMotion = j.angularZMotion = ConfigurableJointMotion.Locked;
 
+            j.breakForce = Mathf.Infinity;
+            j.breakTorque = Mathf.Infinity;
+            j.enableCollision = false;
             j.projectionMode = JointProjectionMode.PositionAndRotation;
-            j.projectionDistance = 0.01f;
-            j.projectionAngle = 2f;
-            j.enablePreprocessing = false;
+            j.projectionDistance = 0.002f;
+            j.projectionAngle = 0.5f;
+            // Keep preprocessing enabled for this rigid six-DOF attachment. Disabling it
+            // allowed large transient constraint errors that projection later snapped back.
+            j.enablePreprocessing = true;
             j.configuredInWorldSpace = false;
 
             return rb;
         }
 
         static GameObject BuildTargetDummy(float originX, float facing,
-            Material mBody, Material mLimb, Material mLeg, Material mFoot, Material mFace)
+            Material mBody, Material mLimb, Material mLeg, Material mFoot, Material mFace,
+            Material mBlade, Material mHilt, Material mGuard)
         {
             float Fwd(float d) => originX + facing * d;
 
@@ -569,6 +579,11 @@ namespace PuppetMaster.Editor
             // Arms (passive guard posture)
             var (uArmL, lArmL, handL, shoulderL, elbowL, wristL) = BuildTargetArm("L", ShoulderZ, mLimb, mLimb, mFoot, target, torso, facing, originX);
             var (uArmR, lArmR, handR, shoulderR, elbowR, wristR) = BuildTargetArm("R", -ShoulderZ, mLimb, mLimb, mFoot, target, torso, facing, originX);
+            // Passive upright guard: clear of the player sword at rest, but reachable
+            // during a swing for native Rigidbody sword-vs-sword contact testing.
+            var sword = BuildSword("Sword_Target", handR, target,
+                new Vector3(facing * 0.30f, 0.95f, 0.08f),
+                mBlade, mHilt, mGuard, addCollisionHandler: false);
 
             // Legs: lead foot at +facing, rear foot at -facing
             var uLegL = Part("Target_UpperLeg_L", PrimitiveType.Capsule, new Vector3(Fwd(-0.07f), 0.76f, 0f), new Vector3(0.12f, 0.22f, 0.12f), 6.5f, mLeg, target, 1.6f);
@@ -622,7 +637,8 @@ namespace PuppetMaster.Editor
             plane.configuredInWorldSpace = false;
 
             // Ignore internal collisions
-            IgnoreTargetDummyCollisions(targetGo, pelvis, torso, head, uArmL, lArmL, handL, uArmR, lArmR, handR, uLegL, lLegL, footL, uLegR, lLegR, footR);
+            IgnoreTargetDummyCollisions(targetGo, pelvis, torso, head, uArmL, lArmL, handL,
+                uArmR, lArmR, handR, uLegL, lLegL, footL, uLegR, lLegR, footR, sword);
 
             return targetGo;
         }
@@ -683,7 +699,7 @@ namespace PuppetMaster.Editor
             Rigidbody uAL, Rigidbody lAL, Rigidbody hL,
             Rigidbody uAR, Rigidbody lAR, Rigidbody hR,
             Rigidbody uLL, Rigidbody lLL, Rigidbody fL,
-            Rigidbody uLR, Rigidbody lLR, Rigidbody fR)
+            Rigidbody uLR, Rigidbody lLR, Rigidbody fR, Rigidbody sword)
         {
             Pair(pelvis, torso);
             Pair(torso, head);
@@ -694,6 +710,8 @@ namespace PuppetMaster.Editor
             Pair(torso, uAR); Pair(uAR, lAR); Pair(lAR, hR);
             Pair(uAR, lAR); Pair(lAR, hR); Pair(uAR, hR);
             Pair(uAL, uAR); Pair(lAL, lAR); Pair(hL, hR);
+            Pair(sword, hR); Pair(sword, lAR); Pair(sword, uAR);
+            Pair(sword, torso); Pair(sword, head);
         }
 
         static ConfigurableJoint BendElbow(Rigidbody child, Rigidbody parent, Vector3 worldAnchor,

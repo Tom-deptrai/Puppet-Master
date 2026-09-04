@@ -100,6 +100,15 @@ namespace PuppetMaster.Prototype
             ContactPoint contact = collision.GetContact(0);
             Rigidbody targetRb = collision.rigidbody;
 
+            // Sword clashes use only the native contact solver. The extra body-hit
+            // impulse below would double the physical response and overload both grips.
+            if (targetRb != null && targetRb.name.StartsWith("Sword_", StringComparison.Ordinal))
+            {
+                if (logHits)
+                    Debug.Log("WEAPON CLASH");
+                return;
+            }
+
             // Compute velocities at contact point
             Vector3 swordPointVel = _swordRb != null ? _swordRb.GetPointVelocity(contact.point) : Vector3.zero;
             Vector3 targetPointVel = targetRb != null ? targetRb.GetPointVelocity(contact.point) : Vector3.zero;
