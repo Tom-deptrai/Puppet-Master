@@ -231,6 +231,7 @@ namespace PuppetMaster.Prototype
                 Pair(sw, uR);
                 Pair(sw, _rig.torso);
                 Pair(sw, _rig.head);
+                Pair(sw, _rig.pelvis);
             }
         }
 

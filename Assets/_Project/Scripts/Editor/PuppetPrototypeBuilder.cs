@@ -358,12 +358,14 @@ namespace PuppetMaster.Editor
             float Fwd(float d) => originX + facing * d;
             bool isRight = suffix == "R";
 
-            // Arm plane sits on the torso side (torso half-width 0.17), coplanar in Z
-            // so the forearm never kinks inward toward the chest.
-            float z = Mathf.Sign(shoulderZ) * 0.17f;
+            // Arm plane sits OUTSIDE the torso side face (torso half-width 0.17).
+            // A clear Z gap keeps shoulder / upper arm / elbow readable in Game View
+            // even when the body leans into the opponent.
+            float z = Mathf.Sign(shoulderZ) * 0.23f;
+            float outward = Mathf.Sign(shoulderZ) * 0.10f;
 
-            // Shoulder socket: just inside the top of the torso box.
-            Vector3 shoulderPt = new Vector3(Fwd(0f), 1.46f, z);
+            // Shoulder socket: on the outer edge of the torso, slightly forward.
+            Vector3 shoulderPt = new Vector3(Fwd(0.02f), 1.46f, z);
 
             const float upperLen = 0.30f;
             const float foreLen = 0.26f;
@@ -371,19 +373,19 @@ namespace PuppetMaster.Editor
             const float armRadius = 0.050f;
             const float foreRadius = 0.044f;
 
-            // Angles measured from straight-down. Right arm presents the sword a
-            // little further forward; both keep the elbow only slightly bent.
-            float upperFromDown = isRight ? 42f : 40f;
-            float elbowBendDeg = isRight ? 30f : 28f;
+            // Angles from straight-down. More forward carry so the forearm/hand sit
+            // clearly in front of the torso instead of sinking into it.
+            float upperFromDown = isRight ? 48f : 44f;
+            float elbowBendDeg = isRight ? 34f : 30f;
             float foreFromDown = upperFromDown + elbowBendDeg;
 
             Vector3 Dir(float degFromDown) => new Vector3(
                 facing * Mathf.Sin(degFromDown * Mathf.Deg2Rad),
                 -Mathf.Cos(degFromDown * Mathf.Deg2Rad),
-                0f);
+                outward * 0.35f);
 
-            Vector3 upperDir = Dir(upperFromDown);
-            Vector3 foreDir = Dir(foreFromDown);
+            Vector3 upperDir = Dir(upperFromDown).normalized;
+            Vector3 foreDir = Dir(foreFromDown).normalized;
             Vector3 elbowPt = shoulderPt + upperDir * upperLen;
             Vector3 wristPt = elbowPt + foreDir * foreLen;
             Vector3 handPt = wristPt + foreDir * handLen;
@@ -535,48 +537,57 @@ namespace PuppetMaster.Editor
             handleCol.height = 0.16f;
             handleCol.direction = 1; // Y-axis
 
-            // Rigidbody
+            // Low friction / light bounce so the blade glances off bodies instead of
+            // wedging deep and fighting the grip joint for many frames.
+            var swordMat = new PhysicsMaterial("SwordContact")
+            {
+                dynamicFriction = 0.06f,
+                staticFriction = 0.06f,
+                bounciness = 0.18f,
+                frictionCombine = PhysicsMaterialCombine.Minimum,
+                bounceCombine = PhysicsMaterialCombine.Average,
+            };
+            bladeCol.sharedMaterial = swordMat;
+            handleCol.sharedMaterial = swordMat;
+
+            // Rigidbody — lighter than the hand chain so grip constraints win clashes.
             var rb = swordGo.AddComponent<Rigidbody>();
-            rb.mass = 1.2f;
-            rb.linearDamping = 0.05f;
-            rb.angularDamping = 1.2f;
+            rb.mass = 0.85f;
+            rb.linearDamping = 0.08f;
+            rb.angularDamping = 1.4f;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-            rb.maxAngularVelocity = 28f;
-            rb.solverIterations = 48;
-            rb.solverVelocityIterations = 24;
+            rb.maxAngularVelocity = 24f;
+            rb.solverIterations = 64;
+            rb.solverVelocityIterations = 32;
 
             if (addCollisionHandler)
             {
                 var handler = swordGo.AddComponent<SwordCollisionHandler>();
                 handler.weakThreshold = 2.0f;
                 handler.mediumThreshold = 5.0f;
-                handler.impulseForceScale = 1.8f;
-                handler.maxImpulse = 35.0f;
+                handler.impulseForceScale = 1.2f;
+                handler.maxImpulse = 16.0f;
+                handler.parryImpulse = 6.0f;
+                handler.parryMaxImpulse = 11.0f;
             }
 
-            // ConfigurableJoint to Hand_R
-            var j = swordGo.AddComponent<ConfigurableJoint>();
+            // FixedJoint grip: a locked ConfigurableJoint still drifts under large
+            // contact impulses and projection snaps it back (looks like detach/reattach).
+            // FixedJoint keeps a true rigid attachment while the sword remains its own
+            // Rigidbody with inertia. No break, no auto-reattach script, no teleport.
+            var j = swordGo.AddComponent<FixedJoint>();
             j.connectedBody = hand;
-            j.autoConfigureConnectedAnchor = false;
-            j.anchor = Vector3.zero; // at gripPos in sword local space
-            j.connectedAnchor = hand.transform.InverseTransformPoint(gripPos);
-            j.axis = new Vector3(1f, 0f, 0f);
-            j.secondaryAxis = new Vector3(0f, 1f, 0f);
-
-            j.xMotion = j.yMotion = j.zMotion = ConfigurableJointMotion.Locked;
-            j.angularXMotion = j.angularYMotion = j.angularZMotion = ConfigurableJointMotion.Locked;
-
             j.breakForce = Mathf.Infinity;
             j.breakTorque = Mathf.Infinity;
             j.enableCollision = false;
-            j.projectionMode = JointProjectionMode.PositionAndRotation;
-            j.projectionDistance = 0.002f;
-            j.projectionAngle = 0.5f;
-            // Keep preprocessing enabled for this rigid six-DOF attachment. Disabling it
-            // allowed large transient constraint errors that projection later snapped back.
             j.enablePreprocessing = true;
-            j.configuredInWorldSpace = false;
+            j.massScale = 1f;
+            j.connectedMassScale = 2.5f; // hand side of the constraint is authoritative
+
+            // Hand must out-mass the blade so solver prefers keeping the grip.
+            if (hand != null && hand.mass < 1.1f)
+                hand.mass = 1.2f;
 
             return rb;
         }

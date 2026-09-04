@@ -111,7 +111,10 @@ namespace PuppetMaster.Prototype
                 $"Target HP: <b>{(oHP >= 0f ? oHP.ToString("0") : "?")}</b>/100" +
                 (oKO ? "  <color=#ff4444><b>TARGET KO</b></color>" : ""), _label);
             if (opponentAI != null)
-                GUILayout.Label($"AI State: <b>{opponentAI.State}</b>", _small);
+                GUILayout.Label($"AI State: <b>{opponentAI.State}</b>" +
+                    (opponentAI.State == PuppetAIOpponent.AIState.Attack
+                        ? $" / <b>{opponentAI.CurrentSlashPhase}</b>"
+                        : ""), _small);
 
             if (controller != null)
             {

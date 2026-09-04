@@ -36,8 +36,8 @@ namespace PuppetMaster.Prototype
         public float mediumThreshold = 5.0f;
 
         [Header("Impulse & Reaction")]
-        public float impulseForceScale = 1.8f;
-        public float maxImpulse = 35.0f;
+        public float impulseForceScale = 1.2f;
+        public float maxImpulse = 16.0f;
         public float hitCooldown = 0.15f;
         [Range(0f, 1f)] public float blockBodyImpulseScale = 0.15f;
 
@@ -52,9 +52,15 @@ namespace PuppetMaster.Prototype
         [Range(0f, 1f)] public float parryMinBladeCross = 0.25f;
         [Tooltip("Defender tip velocity must oppose the attack direction at least this much.")]
         [Range(-1f, 1f)] public float parryMinOpposingDot = 0.05f;
-        public float parryImpulse = 9.5f;
-        public float parryMaxImpulse = 18f;
-        public float parryAttackerTorque = 14f;
+        public float parryImpulse = 6.0f;
+        public float parryMaxImpulse = 11f;
+        public float parryAttackerTorque = 8f;
+
+        [Header("Anti-stick")]
+        [Tooltip("If the blade lodges in a body with low relative speed, nudge both apart.")]
+        public float stickRelSpeedMax = 0.55f;
+        public float stickSeparationImpulse = 2.2f;
+        public float stickCooldown = 0.12f;
 
         [Header("Hit quality")]
         public CombatHitQuality.Settings hitQuality = CombatHitQuality.Settings.Default;
@@ -78,6 +84,7 @@ namespace PuppetMaster.Prototype
         bool _hasImpact;
         int _attackerId;
         static int _nextAttackerId = 1;
+        float _lastStickNudgeTime = -999f;
 
         void Awake()
         {
@@ -147,6 +154,33 @@ namespace PuppetMaster.Prototype
 
             // ---- sword vs body ----
             ResolveBodyHit(collision, contact, targetRb, relVel, relSpeed, strength, cat, now);
+        }
+
+        void OnCollisionStay(Collision collision)
+        {
+            // Blade lodged in a body at near-zero relative speed: a light separating
+            // nudge (physics impulse only — never teleport / reattach).
+            if (_swordRb == null || collision.contactCount == 0) return;
+            if (_ownerRoot != null && collision.transform.IsChildOf(_ownerRoot)) return;
+            if (collision.rigidbody != null && IsSwordBody(collision.rigidbody)) return;
+            if (collision.gameObject.name.Contains("Ground") || collision.gameObject.name.Contains("Rail"))
+                return;
+
+            float now = Time.time;
+            if (now - _lastStickNudgeTime < stickCooldown) return;
+
+            ContactPoint contact = collision.GetContact(0);
+            Rigidbody targetRb = collision.rigidbody;
+            Vector3 swordVel = _swordRb.GetPointVelocity(contact.point);
+            Vector3 targetVel = targetRb != null ? targetRb.GetPointVelocity(contact.point) : Vector3.zero;
+            if ((swordVel - targetVel).magnitude > stickRelSpeedMax) return;
+
+            Vector3 sep = contact.normal;
+            // Contact normal points from target into sword — push sword out, body away.
+            _swordRb.AddForceAtPosition(sep * stickSeparationImpulse, contact.point, ForceMode.Impulse);
+            if (targetRb != null && !targetRb.isKinematic)
+                targetRb.AddForceAtPosition(-sep * stickSeparationImpulse * 0.65f, contact.point, ForceMode.Impulse);
+            _lastStickNudgeTime = now;
         }
 
         void ResolveSwordClash(

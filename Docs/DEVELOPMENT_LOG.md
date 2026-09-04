@@ -8,6 +8,26 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Fix combat foundation sword arms and AI slash
+
+Chỉ sửa 3 nền tảng combat — không thêm feature mới.
+
+### 1. Sword attachment
+- **Nguyên nhân:** ConfigurableJoint 6-DOF locked vẫn drift khi impulse lớn (maxImpulse 35 + parry); projection snap lại → nhìn như detach/reattach. Blade ma sát cao dễ kẹt giữa hai body.
+- **Sửa:** `FixedJoint` grip (`breakForce/Torque = Infinity`, `connectedMassScale = 2.5`, hand mass 1.2, sword mass 0.85); ignore sword↔owner pelvis; PhysicMaterial ma sát thấp; giảm maxImpulse 16 / parry 6; `OnCollisionStay` anti-stick nudge khi relative speed thấp. Không auto-reattach, không teleport.
+
+### 2. Arm readability
+- Shoulder Z `0.17 → 0.23`, thêm outward trên xương, upper/fore nghiêng trước hơn (`upperFromDown` ↑). Silhouette shoulder→upper→elbow→forearm→hand tách khỏi torso (đo zGap ~0.27–0.36).
+
+### 3. AI Horizontal Slash
+- Chỉ Slash: **Guard → Prep → Load → Swing → FollowThrough → Recover → Guard**.
+- Drive qua `SetInput` (depth sweep + arm extend); không Thrust/Overhead attack mix. Retract vừa phải để tránh false Overhead.
+
+### Test
+FixedJoint giữ grip ~0.002 m sau clash dài; HorizontalSlash được recognizer xác nhận; phases Prep/Load/Swing/FollowThrough log đúng; 0 error.
+
+---
+
 ## 2026-09-04 — Complete combat loop prototype with AI opponent
 
 Hoàn thiện combat loop prototype: Parry/Block → HitQuality → Damage/HP → KO → AI Opponent.
