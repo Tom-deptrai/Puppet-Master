@@ -54,7 +54,8 @@ namespace PuppetMaster.Prototype
             Vector3 pFoot = footAttach.position;
             Vector3 pSlot = railSlot.position;
             Vector3 pBelow = belowRail != null ? belowRail.position : pSlot + Vector3.down * 0.4f;
-            Vector3 pThumb = pBelow + new Vector3((isLeft ? -1f : 1f) * thumbFanX, -thumbDrop, -thumbTowardCamera);
+            float facing = controller != null ? controller.FacingSign : 1f;
+            Vector3 pThumb = pBelow + new Vector3(facing * (isLeft ? -1f : 1f) * thumbFanX, -thumbDrop, -thumbTowardCamera);
 
             int seg = Mathf.Max(3, segmentsPerSpan);
             _lr.positionCount = seg * 3 + 1;

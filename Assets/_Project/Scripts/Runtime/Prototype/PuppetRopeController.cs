@@ -53,8 +53,10 @@ namespace PuppetMaster.Prototype
         [Header("Inward / Outward lean — averaged HORIZONTAL input (depth axis)")]
         [Tooltip("Pelvis depth lean (deg) at full inward / outward input. + = OUTWARD (toward camera).")]
         public float depthGain = 36f;
-        [Tooltip("How much the legs follow the depth lean so the body stays one piece.")]
-        [Range(0f, 0.8f)] public float depthHipFollow = 0.40f;
+        [Tooltip("How much the ankles/legs follow the depth lean so the body tilts as one piece from the feet up.")]
+        [Range(0f, 1f)] public float depthLegFollow = 0.85f;
+        [Tooltip("How much the hips follow the depth lean relative to pelvis.")]
+        [Range(0f, 1f)] public float depthHipFollow = 0.25f;
 
         [Header("Pelvis → world drive (carries the 2-axis lean)")]
         public float pelvisSlackSpring = 1200f;
@@ -97,6 +99,7 @@ namespace PuppetMaster.Prototype
         public float RightTension { get; private set; }
         public float DepthValue { get; private set; }
         public float CombinedTension => 0.5f * (LeftTension + RightTension);
+        public float FacingSign => _facingSign;
 
         // ---- lean readouts, in the FACING frame, side-independent ----
         /// <summary>+ = leaning toward the opponent (forward), - = away (backward).</summary>
@@ -191,8 +194,11 @@ namespace PuppetMaster.Prototype
 
             var uL = FindPart("UpperArm_L"); var lL = FindPart("LowerArm_L"); var hL = FindPart("Hand_L");
             var uR = FindPart("UpperArm_R"); var lR = FindPart("LowerArm_R"); var hR = FindPart("Hand_R");
-            Pair(_rig.torso, uL); Pair(uL, lL); Pair(lL, hL);
-            Pair(_rig.torso, uR); Pair(uR, lR); Pair(lR, hR);
+            Pair(_rig.torso, uL); Pair(_rig.torso, lL); Pair(_rig.torso, hL);
+            Pair(uL, lL); Pair(lL, hL); Pair(uL, hL);
+            Pair(_rig.torso, uR); Pair(_rig.torso, lR); Pair(_rig.torso, hR);
+            Pair(uR, lR); Pair(lR, hR); Pair(uR, hR);
+            Pair(uL, uR); Pair(lL, lR); Pair(hL, hR);
         }
 
         void IgnoreLegChain(in PuppetRig.Leg leg)
@@ -265,10 +271,17 @@ namespace PuppetMaster.Prototype
 
             Quaternion leanWorld = Quaternion.Euler(-depthDeg, 0f, -_facingSign * fbDeg);
 
-            // ---- pelvis: full lean, anchored to the world ----
+            // ---- pelvis: full lean, anchored to the world with full-body Z arc swing ----
             SetDrive(_rig.pelvisPlaneJoint,
                 Mathf.Lerp(pelvisSlackSpring, pelvisStandSpring, combined), pelvisDamper, pelvisMaxForce);
             SetTargetWorld(_rig.pelvisPlaneJoint, leanWorld);
+
+            // Guide pelvis Z coordinate so the entire lower body tilts from the feet up
+            if (_rig.pelvisPlaneJoint != null)
+            {
+                float targetZ = Mathf.Sin(depthDeg * Mathf.Deg2Rad) * (_rig.standingPelvisHeight * 0.65f);
+                _rig.pelvisPlaneJoint.targetPosition = new Vector3(0f, 0f, targetZ);
+            }
 
             // ---- spine + neck: follow the same 2-axis lean a fraction more ----
             SetDrive(_rig.spine, Mathf.Lerp(spineSlackSpring, spineStandSpring, combined), spineDamper, spineMaxForce);
@@ -276,7 +289,7 @@ namespace PuppetMaster.Prototype
             SetDrive(_rig.neck, Mathf.Lerp(spineSlackSpring * 0.4f, spineStandSpring * 0.35f, combined), spineDamper, spineMaxForce * 0.4f);
             SetTargetWorld(_rig.neck, Quaternion.Slerp(Quaternion.identity, leanWorld, neckFollow));
 
-            // ---- legs: squat (fight plane) + depth follow so the body stays one piece ----
+            // ---- legs: squat (fight plane) + depth follow so the body stays one piece from ankles up ----
             DriveLeg(_rig.left, squatL, depthDeg, combined);
             DriveLeg(_rig.right, squatR, depthDeg, combined);
 
@@ -293,9 +306,10 @@ namespace PuppetMaster.Prototype
         {
             float spring = Mathf.Lerp(legSlackSpring, legStandSpring, combined);
 
-            Quaternion hipRot = Quaternion.Euler(-depthDeg * depthHipFollow, 0f, squat * hipSquatDeg);
+            // Hip & Knee flex in the fight plane; Ankle tilts the leg column from the foot in depth
+            Quaternion hipRot = Quaternion.Euler(depthDeg * depthHipFollow, 0f, squat * hipSquatDeg);
             Quaternion kneeRot = Quaternion.Euler(0f, 0f, squat * kneeSquatDeg);
-            Quaternion ankleRot = Quaternion.Euler(-depthDeg * depthHipFollow * 0.25f, 0f, squat * ankleSquatDeg);
+            Quaternion ankleRot = Quaternion.Euler(depthDeg * depthLegFollow, 0f, squat * ankleSquatDeg);
 
             DriveJoint(leg.hip, hipRot, spring, legDamper, legMaxForce);
             DriveJoint(leg.knee, kneeRot, spring, legDamper, legMaxForce);

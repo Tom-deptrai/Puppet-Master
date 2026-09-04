@@ -8,6 +8,44 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Fix full body depth lean arms and rail alignment
+
+Giải quyết triệt để 3 vấn đề kỹ thuật vật lý, rig và môi trường:
+
+### 1. Sửa Inward / Outward thành Full-Body Lean
+- **Nguyên nhân trước đây:** `pelvisPlaneJoint.zMotion` bị khoá cứng (`Locked` ở $Z=0$). Khi chân cắm tại $Z=0$ và pelvis bị ghim tại $Z=0$, hai chân không thể nghiêng sang trục Z mà bị kéo căng thẳng đứng; độ uốn chỉ diễn ra từ thắt lưng lên đầu. Ngoài ra, khớp cổ chân (`ankle`) có `ankle.child = Foot` và `ankle.parent = LowerLeg` nên cần đảo dấu góc drive để đẩy cẳng chân cùng chiều với thân.
+- **Đã sửa:**
+  - Mở `pelvisPlaneJoint.zMotion = Limited` (limit 0.55m, spring 6000, damper 150) kèm `zDrive` dẫn động toạ độ Z của pelvis theo cung nghiêng $Z = -\sin(\text{depthDeg}) \times H \times 0.65$.
+  - Mở góc xoay depth (`angularXLimit`) của cổ chân lên `±45°` và gối lên `±15°`.
+  - Điều khiển góc cổ chân `ankleRot = Quaternion.Euler(depthDeg * depthLegFollow, 0, squat * ankleSquatDeg)` với `depthLegFollow = 0.85f`.
+- **Kết quả đo thực tế trong Play Mode:**
+  - `Foot_L`: Roll = 0.0° (cố định trên ray tại Z = 0.00m).
+  - `LowerLeg_L`: Roll = -27.1° (bắt đầu nghiêng từ cổ chân, lệch Z = -0.09m).
+  - `UpperLeg_L`: Roll = -30.5° (tiếp nối góc cẳng chân, lệch Z = -0.30m).
+  - `Pelvis`: Roll = -37.4° (lệch Z = -0.46m).
+  - `Torso`: Roll = -58.7° (lệch Z = -0.73m).
+  - `Head`: Roll = -74.8° (lệch Z = -1.08m).
+  - Toàn bộ cơ thể tạo thành một đường nghiêng liên tục, thống nhất từ bàn chân trên ray lên tới đầu.
+  - Yaw drift duy trì triệt để ≤ 0.7° (không xoay lưng hay biến dạng 3D).
+
+### 2. Sửa hệ tay (Cánh tay chân thực & Tư thế Guard)
+- **Tái cấu trúc rig tay:**
+  - Cánh tay gồm đúng 2 tay giải phẫu: `Shoulder` $\to$ `UpperArm` (Capsule 0.075x0.12x0.075) $\to$ `Elbow` (khớp cầu thị giác 0.08m) $\to$ `LowerArm` (Capsule 0.065x0.11x0.065) $\to$ `Hand` (Box 0.07x0.07x0.07).
+  - Khớp khuỷu tay (`BendElbow`): Đặt trục `axis = (0, 0, 1)`, giới hạn góc gập `lowAngularXLimit = -5°` (chặn đứng hoàn toàn hiện tượng bẻ ngược / hyperextension) và `highAngularXLimit = 130°` (cho phép co tay tự nhiên).
+  - Khớp vai và cổ tay có spring giữ tay ở tư thế guard (Upper arm hướng ra trước, Forearm gập lên trước ngực, Hand nắm đấm che cằm/ngực).
+  - Tắt va chạm giữa các bộ phận tay và thân (`IgnoreAdjacentCollisions`) để tránh tay bị giật hoặc xuyên thấu thân.
+
+### 3. Sửa Rail Alignment
+- **Nguyên nhân trước đây:** Ray trước đó có kích thước ngắn và chưa có rãnh trượt (groove) rõ nét, các slot guide đặt chìm; góc camera 3/4 tạo cảm giác ray bị lệch tâm so với bước chân.
+- **Đã sửa:**
+  - Kéo dài thanh ray lên `1.60m` (cao `0.05m`, rộng `0.22m`), đặt tâm tại `(originX, 0.025f, 0f)`.
+  - Thêm rãnh trượt cơ học `Rail_Groove` nằm giữa ray tại `Y = 0.0505m`.
+  - Mặt trên của ray nằm chính xác tại `Y = 0.050m`, khớp hoàn hảo với đáy bàn chân (`FootY = 0.085m`, chiều cao `0.07m` $\implies$ đáy bàn chân `Y = 0.050m`).
+  - Cân xứng tuyệt đối cho cả PlayerSide Left (`originX = -1.0`) và Right (`originX = +1.0`).
+  - Cập nhật `RopeVisual` nhân `FacingSign` để dây điều khiển fan ra đúng vùng ngón tay mà không bị chéo khi đổi bên.
+
+---
+
 ## 2026-09-04 — Refine puppet lean, collapse, arms and rail
 
 Giải quyết 4 vấn đề kỹ thuật vật lý và rig theo yêu cầu:
