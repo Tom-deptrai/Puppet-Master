@@ -108,8 +108,11 @@ namespace PuppetMaster.Editor
             // ---- arms: exactly 2 arms total, one continuous bone chain per side ----
             var (uArmL, lArmL, handL, shoulderL, elbowL, wristL) = BuildArm("L", ShoulderZ, mLimb, mLimb, mFoot, puppet, torso, facing, originX);
             var (uArmR, lArmR, handR, shoulderR, elbowR, wristR) = BuildArm("R", -ShoulderZ, mLimb, mLimb, mFoot, puppet, torso, facing, originX);
+            // Neutral sword rest pose: blade carried up and forward at ~52 deg. It is
+            // a relaxed ready stance, NOT the guard pose - guard is a deliberate held
+            // sword-arm input, so standing still must never read as a skill.
             var sword = BuildSword("Sword_R", handR, puppet,
-                new Vector3(facing * 0.85f, 0.45f, -0.08f),
+                new Vector3(facing * 0.60f, 0.78f, -0.08f),
                 mBlade, mHilt, mGuard, addCollisionHandler: true);
 
             // ---- legs: fore/aft on the rail, exact fore↔aft mirror.
@@ -220,6 +223,8 @@ namespace PuppetMaster.Editor
 
             var controller = puppetGo.AddComponent<PuppetRopeController>();
             var input = puppetGo.AddComponent<PuppetRopeInput>();
+            var skillRecognition = puppetGo.AddComponent<CombatSkillRecognizer>();
+            rig.skillRecognition = skillRecognition;
             var hud = puppetGo.AddComponent<PuppetDebugHUD>();
             hud.controller = controller; hud.rig = rig; hud.input = input;
 
@@ -228,8 +233,11 @@ namespace PuppetMaster.Editor
             MakeRope("Rope_R", ropes, controller, attachR, railSlotR, belowR, isLeft: false, mRope);
 
             // ---- target dummy (physical test dummy on opposite rail) ----
-            float targetOriginX = -originX;
             float targetFacing = -facing;
+            // Arena spacing stays as validated in the weapon-collision phase (1.16 m
+            // between the two puppets). Neutral clearance is authored into the two
+            // sword rest poses instead of by pushing the puppets apart.
+            float targetOriginX = -originX;
             BuildTargetDummy(targetOriginX, targetFacing, mTBody, mTLimb, mTLeg, mTFoot, mTFace,
                 mBlade, mHilt, mGuard);
 
@@ -579,10 +587,13 @@ namespace PuppetMaster.Editor
             // Arms (passive guard posture)
             var (uArmL, lArmL, handL, shoulderL, elbowL, wristL) = BuildTargetArm("L", ShoulderZ, mLimb, mLimb, mFoot, target, torso, facing, originX);
             var (uArmR, lArmR, handR, shoulderR, elbowR, wristR) = BuildTargetArm("R", -ShoulderZ, mLimb, mLimb, mFoot, target, torso, facing, originX);
-            // Passive upright guard: clear of the player sword at rest, but reachable
-            // during a swing for native Rigidbody sword-vs-sword contact testing.
+            // Passive rest guard: the blade is shouldered slightly AWAY from the
+            // player so the two blades never touch while both puppets stand still
+            // (a resting contact injected ~2.7 m/s / ~10 rad/s of solver noise into
+            // the sword and made Guard recognition flicker). It is still well inside
+            // reach of a committed swing for sword-vs-sword contact testing.
             var sword = BuildSword("Sword_Target", handR, target,
-                new Vector3(facing * 0.30f, 0.95f, 0.08f),
+                new Vector3(facing * -0.34f, 0.92f, 0.16f),
                 mBlade, mHilt, mGuard, addCollisionHandler: false);
 
             // Legs: lead foot at +facing, rear foot at -facing

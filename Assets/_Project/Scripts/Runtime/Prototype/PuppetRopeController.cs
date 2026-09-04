@@ -114,6 +114,7 @@ namespace PuppetMaster.Prototype
         public float RightTension { get; private set; }
         public float DepthValue { get; private set; }
         public float ArmValue { get; private set; }
+        public float EffectiveArmVelocity { get; private set; }
         public float CombinedTension => 0.5f * (LeftTension + RightTension);
         public float FacingSign => _facingSign;
 
@@ -270,6 +271,7 @@ namespace PuppetMaster.Prototype
             float dGoal = debugOverrideInput ? debugDepth : DepthInput;
             float aGoal = debugOverrideInput ? debugArm : ArmInput;
             float aVelGoal = debugOverrideInput ? debugArmVelocity : ArmVelocity;
+            EffectiveArmVelocity = aVelGoal;
 
             LeftTension = Finite(Mathf.Lerp(LeftTension, lGoal, kt));
             RightTension = Finite(Mathf.Lerp(RightTension, rGoal, kt));

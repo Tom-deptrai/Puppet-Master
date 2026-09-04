@@ -63,7 +63,7 @@ namespace PuppetMaster.Prototype
                     "RIGHT THUMB ▶   ↕rope R  ↔xR", _small);
             }
 
-            var panel = new Rect(12, 36, 364, 320);
+            var panel = new Rect(12, 36, 364, 452);
             GUI.color = new Color(0, 0, 0, 0.65f);
             GUI.DrawTexture(panel, _px);
             GUI.color = Color.white;
@@ -100,6 +100,27 @@ namespace PuppetMaster.Prototype
                 float sep = controller.FootSeparation;
                 float standSep = rig != null ? rig.standingFootSeparation : 0.32f;
                 GUILayout.Label($"Foot separation : <b>{sep:0.00}</b> m  (stand {standSep:0.00})", _label);
+
+                var skills = rig != null ? rig.skillRecognition : null;
+                if (skills == null)
+                    skills = GetComponent<CombatSkillRecognizer>();
+                if (skills != null)
+                {
+                    GUILayout.Label($"<b>Current Skill:</b> {skills.CurrentSkill}", _label);
+                    GUILayout.Label(
+                        $"Tip speed : <b>{skills.TipSpeed:0.00} m/s</b>  |  " +
+                        $"Angular: <b>{skills.SwordAngularSpeed:0.00} rad/s</b>", _label);
+                    GUILayout.Label(
+                        $"Tip fwd/lat/vert : <b>{skills.ForwardTipSpeed:+0.00;-0.00;0.00} / " +
+                        $"{skills.LateralTipSpeed:+0.00;-0.00;0.00} / " +
+                        $"{skills.VerticalTipSpeed:+0.00;-0.00;0.00}</b> m/s", _label);
+                    GUILayout.Label(
+                        $"Blade fwd/up : <b>{skills.BladeAlignment:0.00} / {skills.BladeUpAlignment:0.00}</b>" +
+                        $"  |  along blade: <b>{skills.AlongBladeFraction:0.00}</b>", _label);
+                    GUILayout.Label(
+                        $"Arm Input: <b>{skills.ArmInput:+0.00;-0.00;0.00}</b>  |  " +
+                        $"Guard: <b>{(skills.IsGuarding ? "ON" : "OFF")}</b>", _label);
+                }
 
                 // ---- Combat Physics Prototype Info ----
                 var swordHandler = rig != null ? rig.swordCollision : null;

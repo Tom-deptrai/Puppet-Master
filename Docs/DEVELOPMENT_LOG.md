@@ -937,3 +937,40 @@ Khởi động prototype vật lý chiến đấu: Weapon Collision + Physical I
 - Bỏ torque trực tiếp lên sword; torque/momentum vẫn truyền vật lý từ upper arm/lower arm qua wrist, hand và weapon joint. Rigidbody sword vẫn giữ mass, inertia, gravity, collider và Continuous Dynamic collision.
 - Thêm `Sword_Target` Rigidbody + blade/handle Collider vào `Target_Hand_R`, dùng cùng attachment chắc chắn và tư thế guard thụ động; không thêm AI hay điều khiển.
 - Sword-vs-sword dùng phản lực contact solver nguyên bản (không cộng impulse hit reaction lần hai) và log `WEAPON CLASH`. Play Mode xác nhận clash, cả hai kiếm giữ trong tay sau chuỗi swing/lean/depth nhanh, không có joint break/explosion.
+
+---
+
+## 2026-09-04 — Complete combat skill recognition prototype
+
+Nhận diện 4 skill từ chuyển động kiếm thật do người chơi tạo ra. Không thêm HP, damage, KO, AI, multiplayer, combo, animation attack hay nút Attack/Skill. Recognizer chỉ **đọc** trạng thái, không tác động lên rig/joint/Rigidbody.
+
+### `CombatSkillRecognizer.cs`
+- Đo tại **mũi kiếm** bằng transform delta (không dùng `Rigidbody.linearVelocity`: joint khoá 6-DOF báo ~2.7 m/s / ~10 rad/s nhiễu solver ngay cả khi kiếm đứng yên). Vận tốc mũi kiếm được làm mượt EMA 45 ms rồi phân tích theo hệ facing: `forward / lateral / vertical`.
+- **Thrust** — mũi kiếm đi **dọc trục lưỡi** (`alongBlade ≥ 0.65`), lưỡi chĩa vào đối thủ (`bladeFwd ≥ 0.80`), tầm với vượt độ rơi (`forward ≥ -vertical`), xoay thấp (`≤ 3.5 rad/s`). Đâm không cần nhanh nên có cổng riêng `forward ≥ 0.85 m/s`.
+- **OverheadStrike** — mũi kiếm từng được nâng **trên đỉnh đầu** (`peak ≥ head + 0.05`), rơi ≥ 0.30 m với tốc độ xuống ≥ 1.2 m/s. Đỉnh cao được **đóng băng khi lưỡi đang bổ xuống** để quãng rơi đo đúng cú chém thay vì chạy theo lưỡi.
+- **HorizontalSlash** — vòng quét ngang lấn trục dọc 1.25×, xoay ≥ 2.5 rad/s. Bị khoá khi kiếm đang giơ trên đầu (đó là đà của overhead) và khi mũi kiếm lùi ra xa đối thủ (đó là đà hồi sau cú lao, không phải đòn đánh).
+- **Guard** — tư thế **giữ có chủ ý**: `ArmValue ≤ -0.30`, lưỡi ngửa lên che thân, kiếm gần như đứng yên; có dwell 0.18 s và grace 0.12 s nên không nhấp nháy. Đứng yên (arm = 0) **không** phải Guard.
+- Không nhận đòn khi puppet đang đổ (`pelvis < 60%` chiều cao đứng). Cooldown 0.45 s để đà hồi của một cú không bị đặt tên lần hai.
+
+### Sửa neutral pose (nguyên nhân Guard mất ổn định)
+- Kiếm Player rest pose `(facing*0.85, 0.45, -0.08)` → `(facing*0.60, 0.78, -0.08)`.
+- Kiếm Target rest pose `(facing*0.30, 0.95, 0.08)` → `(facing*-0.34, 0.92, 0.16)` — vác chếch **ra xa** Player, vẫn nằm trong tầm swing để test sword-vs-sword.
+- Giữ nguyên khoảng cách sàn đấu 1.16 m đã validate ở phase va chạm (không đẩy hai puppet ra xa).
+- Kết quả: lúc đứng yên **không còn contact nào** giữa kiếm Player và Target (`ComputePenetration` = NONE, khoảng cách gần nhất ~0.19 m).
+
+### Kiểm thử Play Mode (kịch bản tự động qua `debugOverrideInput`)
+| Bài test | Kết quả |
+|---|---|
+| Neutral đứng yên 5 s (×2) | 0/251 frame nhận skill |
+| Guard giữ `arm=-0.60`, 4 s (×2) | 201/201 frame = Guard, ổn định tuyệt đối |
+| Horizontal slash (vung tay nhanh) ×3 | 3/3 đúng, mỗi lần bắn 1 lần |
+| Thrust (lao người, lưỡi ngang) ×3 | 3/3 đúng |
+| Overhead strike (nâng kiếm rồi bổ) ×3 | 3/3 đúng |
+| Stress 20 s lean + depth liên tục, tay kiếm nghỉ | 1 nhận diện ở frame chuyển trạng thái đầu tiên / 1001 frame |
+
+- Không có false-positive đáng kể; neutral và chuyển động thân thường sạch.
+- Sword attachment nguyên vẹn sau toàn bộ chuỗi swing: joint `Sword_R` → `Hand_R` OK, lệch grip 0.0019 m, `Sword_Target` OK, không joint break, Console 0 error.
+- Không đổi control, Rigidbody hay cấu hình joint nào.
+
+### HUD
+`PuppetDebugHUD` bổ sung: Current Skill, tip speed + angular, phân rã fwd/lat/vert, blade fwd/up + along-blade, Arm Input và Guard ON/OFF.
