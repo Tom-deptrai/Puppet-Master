@@ -58,9 +58,9 @@ namespace PuppetMaster.Prototype
                 GUI.DrawTexture(new Rect(w * 0.5f - 1, 0, 2, h), _px);
                 GUI.color = Color.white;
                 GUI.Label(new Rect(w * 0.5f - 240, h - 28, 230, 20),
-                    "◀ LEFT THUMB   ↕rope L  ↔depth", _small);
+                    "◀ LEFT THUMB   ↕rope L  ↔xL", _small);
                 GUI.Label(new Rect(w * 0.5f + 12, h - 28, 260, 20),
-                    "RIGHT THUMB ▶   ↕rope R  ↔sword", _small);
+                    "RIGHT THUMB ▶   ↕rope R  ↔xR", _small);
             }
 
             var panel = new Rect(12, 36, 364, 252);
@@ -70,7 +70,7 @@ namespace PuppetMaster.Prototype
 
             GUILayout.BeginArea(new Rect(panel.x + 12, panel.y + 8, panel.width - 24, panel.height - 16));
             string sideStr = rig != null ? rig.side.ToString() : "?";
-            GUILayout.Label($"PUPPET — Arm Combat Prototype   <size=11>[{sideStr} · faces {facing}]</size>", _header);
+            GUILayout.Label($"PUPPET — Unified 2-Thumb Control   <size=11>[{sideStr} · faces {facing}]</size>", _header);
 
             if (controller != null)
             {
@@ -102,7 +102,7 @@ namespace PuppetMaster.Prototype
                 GUILayout.Label($"Foot separation : <b>{sep:0.00}</b> m  (stand {standSep:0.00})", _label);
             }
 
-            GUILayout.Label("<size=11>A/L rope · Q/E depth · J/K sword arm · drag: L-thumb ↔depth, R-thumb ↔sword</size>", _small);
+            GUILayout.Label("<size=11>A/L rope · Q/E depth · J/K sword arm · 2-thumb: depth=(xL+xR)/2 · sword=(xR-xL)/2</size>", _small);
             GUILayout.EndArea();
         }
 

@@ -8,7 +8,48 @@ quả kiểm thử ở mức chi tiết. Các quyết định ở tầm dự án
 
 ---
 
+## 2026-09-04 — Unify two thumb body and sword control
+
+Hợp nhất hệ thống điều khiển ngang đối xứng dựa trên cả hai ngón cái (2-Thumb Control) để điều khiển đồng thời Full-Body Depth Lean và Sword Arm:
+
+### 1. Công thức Mapping Đối Xứng
+- **Độ dời ngang chuẩn hoá:**
+  - $x_L$: Độ dời ngang chuẩn hoá của ngón cái trái (Left Thumb) $\in [-1.0, +1.0]$.
+  - $x_R$: Độ dời ngang chuẩn hoá của ngón cái phải (Right Thumb) $\in [-1.0, +1.0]$.
+- **Ghép nối đối xứng:**
+  $$\text{DepthInput} = \frac{x_L + x_R}{2}$$
+  $$\text{SwordArmInput} = \frac{x_R - x_L}{2}$$
+  $$\text{SwordArmVelocity} = \frac{v_R - v_L}{2}$$
+
+### 2. Ý Nghĩa Cơ Học & Trải Nghiệm Điều Khiển
+1. **Common-Mode Movement (Hai ngón di chuyển cùng hướng, cùng biên độ):**
+   - $x_L \approx x_R \implies \text{DepthInput} \approx x$, $\text{SwordArmInput} \approx 0$.
+   - Puppet nghiêng toàn thân Inward / Outward theo chiều sâu không gian 2.5D mà cánh tay cầm kiếm vẫn giữ nguyên tư thế thủ ổn định.
+2. **Differential-Mode Movement (Hai ngón di chuyển ngược hướng hoặc có độ chênh):**
+   - $x_R > x_L \implies \text{SwordArmInput} > 0$: Đâm kiếm / vung chém kiếm ra trước.
+   - $x_R < x_L \implies \text{SwordArmInput} < 0$: Thu kiếm về sát sườn phòng thủ.
+   - Thành phần Common-Mode triệt tiêu, thân puppet giữ thăng bằng thẳng đứng không bị nghiêng ngoài ý muốn.
+3. **Combination Movement (Kết hợp cả hai):**
+   - Cho phép người chơi vừa nghiêng né đòn theo chiều sâu vừa vung kiếm phản công mượt mà.
+
+### 3. Horizontal Deadzone & Giữ Nguyên Các Cơ Chế Hiện Có
+- Thêm `horizontalDeadzonePixels = 16f` cho cả hai thumb: loại bỏ hoàn toàn hiện tượng rung/nhiễu ngang khi người chơi chỉ thực hiện thao tác kéo dọc để chỉnh độ căng dây chân (`Foot_L`, `Foot_R`).
+- Giữ nguyên toàn bộ:
+  - Vertical drag: Left Thumb $\to$ Left Rope tension, Right Thumb $\to$ Right Rope tension.
+  - Forward / backward lean và Squat dựa trên chênh lệch và tổng lực căng dây.
+  - Phím desktop debug: `Q` / `E` tiếp tục chỉnh Depth; `J` / `K` tiếp tục chỉnh Sword Arm; `A` / `L` / `Space` chỉnh dây.
+  - Quán tính vật lý (inertia), va chạm, rail, và rig cánh tay.
+
+### 4. Kiểm Thử Play Mode
+- Hai input ngang giống nhau ($x_L = x_R = 1$) $\implies$ Chỉ Depth lean tối đa, cánh tay giữ nguyên guard.
+- Hai input ngang đối nhau ($x_L = -1, x_R = 1$) $\implies$ Chỉ Sword Arm vung ra trước tối đa, thân đứng thẳng (Depth = 0°).
+- Combination ($x_L = 0, x_R = 1$) $\implies$ Cả Depth lean (0.5) và Sword Arm (0.5) cùng hoạt động đồng thời.
+- Kéo dây dọc (Forward lean, Backward lean, Squat) hoạt động độc lập và hoàn toàn ổn định.
+
+---
+
 ## 2026-09-04 — Add prototype arm combat control
+
 
 Triển khai Arm Combat Control Prototype cho hệ điều khiển 2 ngón tay (2-thumb control) và sửa tư thế neutral của cánh tay:
 

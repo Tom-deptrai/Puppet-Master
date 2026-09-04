@@ -7,21 +7,23 @@ using ETouch = UnityEngine.InputSystem.EnhancedTouch;
 namespace PuppetMaster.Prototype
 {
     /// <summary>
-    /// Phase 1.x prototype input: 2-thumb control scheme.
+    /// Phase 1.x unified 2-thumb control scheme.
     ///
-    /// Left Thumb:
-    ///  * VERTICAL drag   -> Left rope tension (rear foot).
-    ///  * HORIZONTAL drag -> Depth lean (inward / outward, Q/E).
+    /// Vertical inputs (independent per thumb):
+    ///  * Left Thumb vertical  -> Left rope tension (rear foot).
+    ///  * Right Thumb vertical -> Right rope tension (lead foot).
     ///
-    /// Right Thumb:
-    ///  * VERTICAL drag   -> Right rope tension (lead foot).
-    ///  * HORIZONTAL drag -> Sword arm combat control (thrust forward / pull back / slash).
-    ///  * SWIPE VELOCITY  -> Dynamic swing momentum & follow-through inertia.
+    /// Horizontal inputs (unified symmetric coupling):
+    ///  * xL = horizontal displacement of Left Thumb (-1..1)
+    ///  * xR = horizontal displacement of Right Thumb (-1..1)
     ///
-    /// Desktop test:
-    ///   A = Left rope, L = Right rope, Space = Both ropes;
-    ///   Q = Inward, E = Outward (depth);
-    ///   J = Sword arm retract (-1), K = Sword arm thrust / slash (+1).
+    ///  DepthInput    = (xL + xR) / 2  (common-mode movement: INWARD / OUTWARD lean)
+    ///  SwordArmInput = (xR - xL) / 2  (differential-mode movement: SWORD ARM control)
+    ///
+    /// Desktop debug bindings:
+    ///   A / L / Space = Left / Right / Both ropes
+    ///   Q / E         = Inward / Outward depth lean
+    ///   J / K         = Sword arm retract / thrust
     /// </summary>
     [RequireComponent(typeof(PuppetRopeController))]
     public sealed class PuppetRopeInput : MonoBehaviour
@@ -29,13 +31,11 @@ namespace PuppetMaster.Prototype
         [Header("Vertical drag -> rope tension")]
         [Min(20f)] public float dragFullPixels = 220f;
 
-        [Header("Left thumb horizontal -> depth (inward / outward)")]
-        [Min(20f)] public float depthFullPixels = 170f;
-        [Min(0f)] public float depthDeadzonePixels = 16f;
+        [Header("Horizontal drag -> Depth + Sword Arm (Unified 2-Thumb)")]
+        [Min(20f)] public float horizontalFullPixels = 160f;
+        [Min(0f)] public float horizontalDeadzonePixels = 16f;
 
-        [Header("Right thumb horizontal -> Arm combat control")]
-        [Min(20f)] public float armFullPixels = 150f;
-        [Min(0f)] public float armDeadzonePixels = 14f;
+        [Header("Arm Response (units per second)")]
         [Min(0.1f)] public float armSpeed = 16f;
         [Min(0.1f)] public float armReturnSpeed = 5.5f;
 
@@ -44,7 +44,7 @@ namespace PuppetMaster.Prototype
         [Min(0.1f)] public float tensionFallSpeed = 10f;
         [Min(0.1f)] public float depthSpeed = 9f;
 
-        [Header("Keyboard test bindings (desktop)")]
+        [Header("Keyboard test bindings (desktop debug)")]
         public Key leftKey = Key.A;
         public Key rightKey = Key.L;
         public Key bothKey = Key.Space;
@@ -53,11 +53,13 @@ namespace PuppetMaster.Prototype
         public Key armRetractKey = Key.J;
         public Key armThrustKey = Key.K;
 
-        // read-only for the HUD
+        // read-only for the HUD & debugging
         public float LeftTarget { get; private set; }
         public float RightTarget { get; private set; }
         public float LeftValue { get; private set; }
         public float RightValue { get; private set; }
+        public float LeftHorizontal { get; private set; }
+        public float RightHorizontal { get; private set; }
         public float DepthTarget { get; private set; }
         public float DepthValue { get; private set; }
         public float RightArmTarget { get; private set; }
@@ -66,7 +68,7 @@ namespace PuppetMaster.Prototype
 
         PuppetRopeController _controller;
 
-        // mouse: one zone at a time
+        // mouse: one zone at a time (desktop)
         bool _mouseActive;
         Vector2 _mouseStart;
         Vector2 _mousePrev;
@@ -93,40 +95,29 @@ namespace PuppetMaster.Prototype
             float halfW = Screen.width * 0.5f;
 
             float targetLeft = 0f, targetRight = 0f;
-            float depthContribution = 0f;
-            int depthCount = 0;
-            float armContribution = 0f;
-            int armCount = 0;
-            float measuredArmVel = 0f;
+            float xL = 0f, xR = 0f;
+            int countL = 0, countR = 0;
+            float vxL = 0f, vxR = 0f;
 
-            // ---- keyboard (desktop) ----
+            // ---- keyboard (desktop debug) ----
             var kb = Keyboard.current;
+            float kbDepth = 0f;
+            float kbArm = 0f;
+            float kbArmVel = 0f;
             if (kb != null)
             {
                 if (kb[bothKey].isPressed) { targetLeft = 1f; targetRight = 1f; }
                 if (kb[leftKey].isPressed) targetLeft = 1f;
                 if (kb[rightKey].isPressed) targetRight = 1f;
 
-                float kbDepth = 0f;
                 if (kb[outwardKey].isPressed) kbDepth += 1f;
                 if (kb[inwardKey].isPressed) kbDepth -= 1f;
-                if (kbDepth != 0f)
-                {
-                    depthContribution += kbDepth;
-                    depthCount++;
-                }
 
-                float kbArm = 0f;
-                if (kb[armThrustKey].isPressed) { kbArm += 1f; measuredArmVel = 5f; }
-                if (kb[armRetractKey].isPressed) { kbArm -= 1f; measuredArmVel = -5f; }
-                if (kbArm != 0f)
-                {
-                    armContribution += kbArm;
-                    armCount++;
-                }
+                if (kb[armThrustKey].isPressed) { kbArm += 1f; kbArmVel = 5f; }
+                if (kb[armRetractKey].isPressed) { kbArm -= 1f; kbArmVel = -5f; }
             }
 
-            // ---- mouse (desktop, one zone) ----
+            // ---- mouse (desktop, one zone at a time) ----
             var mouse = Mouse.current;
             if (mouse != null)
             {
@@ -149,27 +140,29 @@ namespace PuppetMaster.Prototype
                     float t = Mathf.Clamp01((_mouseStart.y - mp.y) / dragFullPixels);
                     float deltaT = Mathf.Max(0.001f, now - _mousePrevTime);
                     float deltaX = mp.x - _mouseStart.x;
+                    float normX = NormalizeHorizontal(deltaX);
+                    float vx = (mp.x - _mousePrev.x) / deltaT / horizontalFullPixels;
 
                     if (_mouseLeftZone)
                     {
                         targetLeft = Mathf.Max(targetLeft, t);
-                        depthContribution += HorizontalToDepth(deltaX);
-                        depthCount++;
+                        xL += normX;
+                        countL++;
+                        vxL = vx;
                     }
                     else
                     {
                         targetRight = Mathf.Max(targetRight, t);
-                        armContribution += HorizontalToArm(deltaX);
-                        armCount++;
-                        float vx = (mp.x - _mousePrev.x) / deltaT / armFullPixels;
-                        measuredArmVel = vx;
+                        xR += normX;
+                        countR++;
+                        vxR = vx;
                     }
                     _mousePrev = mp;
                     _mousePrevTime = now;
                 }
             }
 
-            // ---- multitouch (mobile) ----
+            // ---- multitouch (mobile 2-thumb) ----
             foreach (var touch in ETouch.Touch.activeTouches)
             {
                 switch (touch.phase)
@@ -191,20 +184,22 @@ namespace PuppetMaster.Prototype
                             float t = Mathf.Clamp01((o.start.y - touch.screenPosition.y) / dragFullPixels);
                             float deltaT = Mathf.Max(0.001f, now - o.prevTime);
                             float deltaX = touch.screenPosition.x - o.start.x;
+                            float normX = NormalizeHorizontal(deltaX);
+                            float vx = (touch.screenPosition.x - o.prevPos.x) / deltaT / horizontalFullPixels;
 
                             if (o.leftZone)
                             {
                                 targetLeft = Mathf.Max(targetLeft, t);
-                                depthContribution += HorizontalToDepth(deltaX);
-                                depthCount++;
+                                xL += normX;
+                                countL++;
+                                vxL = vx;
                             }
                             else
                             {
                                 targetRight = Mathf.Max(targetRight, t);
-                                armContribution += HorizontalToArm(deltaX);
-                                armCount++;
-                                float vx = (touch.screenPosition.x - o.prevPos.x) / deltaT / armFullPixels;
-                                measuredArmVel = vx;
+                                xR += normX;
+                                countR++;
+                                vxR = vx;
                             }
 
                             _touches[touch.touchId] = new DragOrigin
@@ -224,11 +219,25 @@ namespace PuppetMaster.Prototype
                 }
             }
 
-            // Depth from Left Thumb horizontal
-            float depthTarget = depthCount > 0 ? Mathf.Clamp(depthContribution / depthCount, -1f, 1f) : 0f;
+            // Average touches per zone if multiple
+            float finalXL = countL > 0 ? xL / countL : 0f;
+            float finalXR = countR > 0 ? xR / countR : 0f;
 
-            // Arm from Right Thumb horizontal
-            float armTarget = armCount > 0 ? Mathf.Clamp(armContribution / armCount, -1f, 1f) : 0f;
+            LeftHorizontal = finalXL;
+            RightHorizontal = finalXR;
+
+            // Unified 2-Thumb Coupling:
+            // DepthInput    = (xL + xR) / 2
+            // SwordArmInput = (xR - xL) / 2
+            float depthFromThumbs = 0.5f * (finalXL + finalXR);
+            float armFromThumbs = 0.5f * (finalXR - finalXL);
+            float measuredArmVel = 0.5f * (vxR - vxL);
+
+            // Combine with desktop debug keys (Q/E for depth, J/K for sword arm)
+            float depthTarget = Mathf.Clamp(depthFromThumbs + kbDepth, -1f, 1f);
+            float armTarget = Mathf.Clamp(armFromThumbs + kbArm, -1f, 1f);
+            if (Mathf.Abs(kbArmVel) > 0.1f)
+                measuredArmVel = kbArmVel;
 
             LeftTarget = targetLeft;
             RightTarget = targetRight;
@@ -254,18 +263,11 @@ namespace PuppetMaster.Prototype
             _controller.SetInput(LeftValue, RightValue, DepthValue, RightArmValue, RightArmVelocity);
         }
 
-        float HorizontalToDepth(float pixels)
+        float NormalizeHorizontal(float pixels)
         {
             float sign = Mathf.Sign(pixels);
-            float mag = Mathf.Max(0f, Mathf.Abs(pixels) - depthDeadzonePixels);
-            return Mathf.Clamp(sign * mag / depthFullPixels, -1f, 1f);
-        }
-
-        float HorizontalToArm(float pixels)
-        {
-            float sign = Mathf.Sign(pixels);
-            float mag = Mathf.Max(0f, Mathf.Abs(pixels) - armDeadzonePixels);
-            return Mathf.Clamp(sign * mag / armFullPixels, -1f, 1f);
+            float mag = Mathf.Max(0f, Mathf.Abs(pixels) - horizontalDeadzonePixels);
+            return Mathf.Clamp(sign * mag / horizontalFullPixels, -1f, 1f);
         }
 
         static float MoveToward(float current, float target, float dt, float rise, float fall)
