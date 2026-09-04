@@ -180,7 +180,7 @@ namespace PuppetMaster.Prototype
                 }
             }
 
-            GUILayout.Label("<size=11>A/L rope · Q/E depth · J/K sword · R = reset round</size>", _small);
+            GUILayout.Label("<size=11>A/L rope · Q/E depth · J/K sword · R reset · touch debug bottom</size>", _small);
             GUILayout.EndArea();
         }
 

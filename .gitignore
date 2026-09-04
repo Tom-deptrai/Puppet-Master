@@ -63,6 +63,8 @@ sysinfo.txt
 *.app
 *.unitypackage
 *.xcarchive
+/iOSBuild/
+/AndroidBuild/
 
 # Crashlytics
 crashlytics-build.properties
